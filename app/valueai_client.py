@@ -5,7 +5,6 @@ from aiogram.client.session import aiohttp
 
 from auth_manager import AuthManager
 
-
 VALUEAI_LOGIN = os.getenv("VALUEAI_LOGIN")  # Лучше хранить в .env
 VALUEAI_PASSWORD = os.getenv("VALUEAI_PASSWORD")
 
@@ -13,8 +12,8 @@ VALUEAI_PASSWORD = os.getenv("VALUEAI_PASSWORD")
 auth_manager = AuthManager(VALUEAI_LOGIN, VALUEAI_PASSWORD)
 
 class ValueAIClient:
-    def __init__(self, auth_manager: AuthManager):
-        self.auth_manager = auth_manager
+    def __init__(self, auth_manag: AuthManager):
+        self.auth_manager = auth_manag
         self.base_url = "https://ml-request-prod.wavea.cc/api/external/v1/"
 
     async def get_headers(self) -> dict:
@@ -46,17 +45,20 @@ class ValueAIClient:
     async def delete_chat(self, chat_id: str) -> bool:
         """Удаляет чат."""
         url = f"{self.base_url}/chats/{chat_id}"
-        headers = await self._get_headers()
+        headers = await self.get_headers()
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 return response.status == 200
 
+
 # Инициализация клиента ValueAI
 valueai_client = ValueAIClient(auth_manager)
+
 
 @dp.message_handler(commands=['start'])
 async def send_welcome(message: types.Message):
     await message.reply("Привет! Задай вопрос, и я обработаю его через ValueAI.")
+
 
 @dp.message_handler()
 async def handle_message(message: types.Message):
@@ -68,4 +70,3 @@ async def handle_message(message: types.Message):
     except Exception as e:
         logger.error(f"Ошибка: {e}")
         await message.reply("⚠️ Ошибка. Попробуйте позже.")
-
