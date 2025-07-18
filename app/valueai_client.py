@@ -1,19 +1,24 @@
-import os
 import logging
-from aiogram import types
-from aiogram.client.session import aiohttp
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
+import aiohttp
+from app.auth_manager import AuthManager
 
-from auth_manager import AuthManager
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-VALUEAI_LOGIN = os.getenv("VALUEAI_LOGIN")  # Лучше хранить в .env
-VALUEAI_PASSWORD = os.getenv("VALUEAI_PASSWORD")
+# VALUEAI_LOGIN = os.getenv("VALUEAI_LOGIN")
+# VALUEAI_PASSWORD = os.getenv("VALUEAI_PASSWORD")
 
-# Инициализация менеджера авторизации
-auth_manager = AuthManager(VALUEAI_LOGIN, VALUEAI_PASSWORD)
+
+class APIError(Exception):
+    """Кастомное исключение для ошибок API"""
+    pass
+
 
 class ValueAIClient:
-    def __init__(self, auth_manag: AuthManager):
-        self.auth_manager = auth_manag
+    def __init__(self, auth_manager: AuthManager):
+        self.auth_manager = auth_manager
         self.base_url = "https://ml-request-prod.wavea.cc/api/external/v1/"
 
     async def get_headers(self) -> dict:
@@ -23,50 +28,88 @@ class ValueAIClient:
             "Authorization": f"Bearer {token}"
         }
 
-    async def create_chat(self) -> str:
-        """Создаёт новый чат."""
-        url = f"{self.base_url}chats"
-        headers = await self.get_headers()
+    @retry(
+        wait=wait_exponential(multiplier=0.5, min=1, max=8),
+        stop=stop_after_attempt(8),
+        retry=retry_if_exception_type((aiohttp.ClientError, APIError))
+    )
+    async def get_chat_response(self, chat_url: str, headers: dict) -> str:
+        """Получает ответ из чата с повторными попытками."""
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers) as response:
+            async with session.get(chat_url, headers=headers) as response:
+                if response.status != 200:
+                    error = await response.text()
+                    raise APIError(f"Ошибка получения ответа: {error}")
+
                 data = await response.json()
-                return data["chat_id"]
+                logger.debug(f"data: {data}")
 
-    async def send_message(self, chat_id: str, message: str) -> str:
-        """Отправляет сообщение в ValueAI."""
-        url = f"{self.base_url}/chats/{chat_id}/messages"
+                try:
+                    return data['data'][0]['text']
+                except (KeyError, IndexError):
+                    raise APIError("Ответ LLM не найден в истории")
+
+    async def send_message_to_llm(self, message: str) -> str:
+        """Отправляет сообщение в LLM и возвращает ответ."""
+        url = f"{self.base_url}chat"
         headers = await self.get_headers()
-        payload = {"message": message}
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=payload) as response:
-                data = await response.json()
-                return data["response"]
 
-    async def delete_chat(self, chat_id: str) -> bool:
-        """Удаляет чат."""
-        url = f"{self.base_url}/chats/{chat_id}"
-        headers = await self.get_headers()
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                return response.status == 200
+        payload = {
+            "trained_model_id": 1,
+            "rag_id": 54,
+            "text": message,
+            "options": {
+                "temperature": 0.45,
+                "tokens_request_limit": 3000,
+                "tokens_response_limit": 1000,
+                "top_p": 1,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+                "instructions": "Ты — HR-ассистент компании WaveAccess...",
+                "top_k": 9,
+                "similarity_threshold": 0.45,
+            }
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Создаем чат
+                async with session.post(url, json=payload, headers=headers) as response:
+                    if response.status != 200:
+                        raise APIError(f"Ошибка создания чата: {response.status}")
+                    data = await response.json()
+                    chat_id = data['id']
+                    logger.info(f'Чат создан: {chat_id}')
+
+                chat_url = f"{url}/{chat_id}"
+
+                # Получаем ответ с повторными попытками
+                answer = await self.get_chat_response(chat_url, headers)
+
+                # Удаляем чат
+                async with session.delete(chat_url, headers=headers) as response:
+                    if response.status != 200:
+                        logger.warning(f'Ошибка удаления чата: {response.status}')
+                    else:
+                        logger.info('Чат успешно удален')
+
+                return answer
+
+        except Exception as e:
+            logger.error(f"Ошибка при работе с API: {str(e)}")
+            raise
 
 
-# Инициализация клиента ValueAI
-valueai_client = ValueAIClient(auth_manager)
-
-
-@dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-    await message.reply("Привет! Задай вопрос, и я обработаю его через ValueAI.")
-
-
-@dp.message_handler()
-async def handle_message(message: types.Message):
-    try:
-        chat_id = await valueai_client.create_chat()
-        response = await valueai_client.send_message(chat_id, message.text)
-        await message.reply(response, parse_mode=ParseMode.MARKDOWN)
-        await valueai_client.delete_chat(chat_id)
-    except Exception as e:
-        logger.error(f"Ошибка: {e}")
-        await message.reply("⚠️ Ошибка. Попробуйте позже.")
+# async def main():
+#     try:
+#         # Инициализация
+#         auth_manager = AuthManager(VALUEAI_LOGIN, VALUEAI_PASSWORD)
+#         client = ValueAIClient(auth_manager)
+#
+#         # Тестовый запрос
+#         question = "Какие у меня льготы как у сотрудника?"
+#         answer = await client.send_message_to_llm(question)
+#         print(f"Ответ на вопрос '{question}':\n{answer}")
+#
+#     except Exception as e:
+#         logger.error(f"Ошибка в основном потоке: {str(e)}")
