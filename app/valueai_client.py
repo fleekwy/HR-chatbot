@@ -7,9 +7,6 @@ from app.auth_manager import AuthManager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# VALUEAI_LOGIN = os.getenv("VALUEAI_LOGIN")
-# VALUEAI_PASSWORD = os.getenv("VALUEAI_PASSWORD")
-
 
 class APIError(Exception):
     """Кастомное исключение для ошибок API"""
@@ -100,6 +97,7 @@ class ValueAIClient:
             raise
 
 
+# Функция для тестироания
 # async def main():
 #     try:
 #         # Инициализация
