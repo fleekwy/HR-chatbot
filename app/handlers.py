@@ -1,16 +1,25 @@
-import requests
 from aiogram import F, Router
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from datetime import datetime
+import os
+from dotenv import load_dotenv
 
 import app.keyboards as kb
 from app.storage import user_storage, UserData
-# from app.work_with_Dify import ask_dify
+from app.valueai_client import ValueAIClient
+from app.auth_manager import AuthManager
 
 router = Router()
+load_dotenv('.env')
+
+VALUEAI_LOGIN = os.getenv("VALUEAI_LOGIN")
+VALUEAI_PASSWORD = os.getenv("VALUEAI_PASSWORD")
+auth_manager = AuthManager(VALUEAI_LOGIN, VALUEAI_PASSWORD)
+# Инициализация клиента ValueAI
+valueai_client = ValueAIClient(auth_manager)
 
 
 class UserStates(StatesGroup):
@@ -35,13 +44,13 @@ async def process_login(message: Message, state: FSMContext):
 
     await state.update_data(login=message.text)
     await state.set_state(UserStates.password)
-    await message.answer("Теперь введите ваш пароль")
+    await message.answer("Теперь введите ваш пароль:")
 
 
 @router.message(UserStates.password)
 async def process_password(message: Message, state: FSMContext):
     if not message.text:
-        await message.answer("Неверный пароль! Попробуйте еще раз")
+        await message.answer("Неверный пароль! Попробуйте еще раз.")
         return
 
     user_data = UserData()
@@ -49,7 +58,7 @@ async def process_password(message: Message, state: FSMContext):
     user_storage[message.from_user.id] = user_data  # сохраняем
 
     await state.clear()
-    await message.answer("Вы успешно авторизованы! Срок действия авторизации - 7 дней")
+    await message.answer("Вы успешно авторизованы! Срок действия авторизации - 7 дней.")
 
 
 @router.message(Command("menu"))
@@ -75,7 +84,7 @@ async def about_bot(callback: CallbackQuery):
 @router.callback_query(F.data == "back_to_main")
 async def back_to_main(callback: CallbackQuery):
     await callback.message.edit_text(
-        "Вы вернулись в главное меню",
+        "Вы вернулись в главное меню.",
         reply_markup=kb.main
     )
     await callback.answer()
@@ -84,7 +93,7 @@ async def back_to_main(callback: CallbackQuery):
 @router.callback_query(F.data == "reautorisation")
 async def reautorisation(callback: CallbackQuery, state: FSMContext):
     await state.set_state(UserStates.login)
-    await callback.answer()
+    await callback.answer()  # Обязательно, чтобы Telegram "убрал часики"
 
     await callback.message.answer(
         "Пожалуйста, введите ваш логин в формате name@waveaccess.global"
@@ -100,26 +109,11 @@ async def about_bot(callback: CallbackQuery):
 
 
 @router.message()
-async def handle_message(message: Message):
+async def handle_user_message(message: Message):
+    # Обработка вопроса (заглушка)
+    # response = "Я пока не знаю ответ на этот вопрос..."
 
-    question = message.text
+    response = await valueai_client.send_message_to_llm(message.text)
 
-    response = requests.post(
-        "DIFY_WORKFLOW_URL",
-        json={
-            "valueai_api": "https://api.valueai.cloud/v1",
-            "auth_token": "your_valueai_token",
-            "model_id": 123,
-            "project_id": 456,
-            "user_query": question,
-            "temperature": 0.7,
-            "max_tokens": 1000,
-            "non_work_response": "Это не рабочий вопрос",
-            "bad_intent_response": "Я не могу ответить на это"
-        }
-    )
-
-    if response.status_code == 200:
-        message.reply_text(response.json()["final_response"])
-    else:
-        message.reply_text("Ошибка обработки запроса")
+    # Отправляем ответ с обновленной клавиатурой
+    await message.answer(response)
