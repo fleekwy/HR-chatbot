@@ -1,9 +1,14 @@
 import os
+
+import logging
 from dotenv import load_dotenv
 import aiohttp
 from typing import Dict
+from pathlib import Path
 
-load_dotenv('.env')
+# Загрузка .env из корня проекта (на уровень выше app/)
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(env_path)
 
 
 class AuthManager:
@@ -11,9 +16,10 @@ class AuthManager:
         self.login = login
         self.password = password
         self.base_auth_url = "https://ml-request-prod.wavea.cc/api/external/v1/"  # Уточните URL
+        self.env_path = env_path  # Сохраняем путь к .env
 
     @staticmethod
-    async def update_env_tokens(tokens: Dict[str, str]) -> None:
+    async def update_env_tokens(tokens: Dict[str, str], path_env: Path) -> None:
         """Обновляет VALUEAI_ACCESS_TOKEN и VALUEAI_REFRESH_TOKEN в .env файле.
 
         Args:
@@ -23,6 +29,8 @@ class AuthManager:
             - Добавляет перенос строки перед записью, если файл не пустой
             - Сохраняет все существующие переменные, кроме обновляемых
             - Корректно обрабатывает случаи с отсутствующим .env
+            :param tokens: 
+            :param path_env: 
         """
         required_keys = {"authorization_token", "refresh_token"}
         if not all(key in tokens for key in required_keys):
@@ -35,11 +43,11 @@ class AuthManager:
         }
 
         # Чтение существующего .env
-        file_exists = os.path.exists(".env")
+        file_exists = path_env.exists()
         existing_lines = []
 
         if file_exists:
-            with open(".env", "r") as f:
+            with open(path_env, "r") as f:
                 existing_lines = f.readlines()
 
         # Фильтрация старых значений
@@ -52,7 +60,7 @@ class AuthManager:
         needs_newline = bool(new_lines) and (not new_lines[-1].endswith("\n"))
 
         # Запись обновленного файла
-        with open(".env", "w") as f:
+        with open(path_env, "w") as f:
             # Существующие строки
             if new_lines:
                 f.write("\n".join(new_lines))
@@ -85,11 +93,10 @@ class AuthManager:
                     raise Exception("Not authorized: Error: Not Authorized")
                 elif response.status == 200:
                     tokens = await response.json()
-                    await self.update_env_tokens(tokens)
+                    await self.update_env_tokens(tokens, self.env_path)
                     return tokens
                 else:
                     raise Exception("Unexceptable mistake")
-
 
     async def refresh_tokens(self, refresh_token: str) -> Dict[str, str]:
         """Обновляет токены с помощью refresh_token."""
@@ -109,7 +116,7 @@ class AuthManager:
                     raise Exception("Not authorized: Error: Not Authorized")
                 elif response.status == 200:
                     tokens = await response.json()
-                    await self.update_env_tokens(tokens)
+                    await self.update_env_tokens(tokens, self.env_path)
                     return tokens
 
     async def get_valid_token(self) -> str:
@@ -129,42 +136,41 @@ class AuthManager:
             print('Пытаюсь освежить')
             new_tokens = await self.refresh_tokens(refresh_token)
             return new_tokens["authorization_token"]
-        except Exception:
+        except (aiohttp.ClientError, KeyError) as e:
             print('Не получилось освежить')
+            logging.error(f"Ошибка: {e}", exc_info=True)
             tokens = await self.get_new_tokens()
             return tokens["authorization_token"]
 
 
-#async def test():
-
-#    print(os.getenv("VALUEAI_LOGIN"))
-#    print(os.getenv("VALUEAI_PASSWORD"))
-
-
-#    # Проверка работы AuthManager
-#    auth_manager = AuthManager(
+# async def test():
+#
+#     print(os.getenv("VALUEAI_LOGIN"))
+#     print(os.getenv("VALUEAI_PASSWORD"))
+#
+#     # Проверка работы AuthManager
+#     auth_manager = AuthManager(
 #        login=os.getenv("VALUEAI_LOGIN"),
 #        password=os.getenv("VALUEAI_PASSWORD")
-#    )
-
-#    print(f'auth_manager.login = {auth_manager.login}, auth_manager.password = {auth_manager.password}')
-
-    #print("1. Получение новых токенов...")
-    #new_tokens = await auth_manager.get_new_tokens()
-    #print("Новые токены:", new_tokens)
-
-    #print("\n2. Получение валидного токена...")
-    #valid_token = await auth_manager.get_valid_token()
-    #print("Валидный токен:", valid_token)
-
-
-
-    #print("\n3. Обновление токенов...")
-    #refreshed_tokens = await auth_manager.refresh_tokens('new_tokens["refresh_token"]')
-    #print("Обновленные токены:", refreshed_tokens)
-
-
-#if __name__ == "__main__":
-#    import asyncio
-
-#   asyncio.run(test())
+#     )
+#
+#     print(f'auth_manager.login = {auth_manager.login}, auth_manager.password = {auth_manager.password}')
+#
+#     print("1. Получение новых токенов...")
+#     new_tokens = await auth_manager.get_new_tokens()
+#     print("Новые токены:", new_tokens)
+#
+#     print("\n2. Получение валидного токена...")
+#     valid_token = await auth_manager.get_valid_token()
+#     print("Валидный токен:", valid_token)
+#
+#
+#     print("\n3. Обновление токенов...")
+#     refreshed_tokens = await auth_manager.refresh_tokens('new_tokens["refresh_token"]')
+#     print("Обновленные токены:", refreshed_tokens)
+#
+#
+# if __name__ == "__main__":
+#     import asyncio
+#
+# asyncio.run(test())
