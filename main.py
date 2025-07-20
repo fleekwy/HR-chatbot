@@ -10,6 +10,8 @@ import asyncio
 # Bot - класс для взаимодействия с Telegram Bot API
 # Dispatcher - центральный класс для обработки обновлений (update)
 from aiogram import Bot, Dispatcher
+from app.storage import SQLiteStorage
+from pathlib import Path
 
 # Модуль стандартной библиотеки Python для работы с операционной системой
 # Используется для доступа к переменным окружения, путям файлов и т.д.
@@ -22,14 +24,17 @@ from dotenv import load_dotenv
 # Импорт роутера из вашего приложения
 # Содержит обработчики сообщений и команд для бота
 from app.handlers import router
+from config import FSM_DB_PATH
 
 # Реализация хранилища состояний FSM (Finite State Machine)
 # MemoryStorage хранит данные в оперативной памяти (исчезают после перезапуска бота)
-from aiogram.fsm.storage.memory import MemoryStorage
+# from aiogram.fsm.storage.memory import MemoryStorage
 
 # Кастомная функция для проверки истечения срока аутентификации
 # Содержит логику проверки времени сессии пользователя
-from app.check_auth_expiry import check_auth_expiry
+# from app.check_auth_expiry import check_auth_expiry
+
+# from app.middlewares.state_recovery import StateRecoveryMiddleware
 
 load_dotenv()  # Функция load_dotenv() из библиотеки python-dotenv загружает переменные окружения
 # из файла .env в текущее окружение Python
@@ -44,19 +49,28 @@ async def main():
 
     # В этом коде инициализируются основные компоненты для работы бота на aiogram 3.x.
     bot = Bot(token=bot_token)  # Создаётся экземпляр класса Bot, который отвечает за взаимодействие с Telegram Bot API
-    storage = MemoryStorage()  # Создаётся хранилище состояний (FSM — Finite State Machine) в оперативной памяти
+    # storage = MemoryStorage()  # Создаётся хранилище состояний (FSM — Finite State Machine) в оперативной памяти
+
+    # Путь от корня проекта до states.db
+    # db_path = Path(__file__).parent / "states.db"  # main.py и states.db в одной папке
+
+    db_path = Path(__file__).parent / "states.db"
+    print(f"Путь к states.db: {db_path}")
+    print(f"Файл существует: {db_path.exists()}")
+    storage = SQLiteStorage(db_path=FSM_DB_PATH)  # Хранилище в оперативной памяти - явно передаем путь
     dp = Dispatcher(storage=storage)  # Создаётся диспетчер (Dispatcher) — центральный компонент aiogram, который:
     # принимает обновления от Telegram (сообщения, команды, колбэки), перенаправляет их в ваши обработчики (роутеры).
     # Telegram --> Bot --> Dispatcher --> Router --> Handlers
+    # ????dp.update.outer_middleware(StateRecoveryMiddleware())  # Подключение миддлваря
 
     dp.include_router(router)  # Подключает роутер (группу обработчиков) к диспетчеру бота
 
-    task = None  # заглушка
+    # task = None  # заглушка
 
     # Запуск бота
     try:
         print("Бот запущен...")
-        task = asyncio.create_task(check_auth_expiry(bot, dp))  # Запускаем проверку авторизации как фоновую задачу
+        # task = asyncio.create_task(check_auth_expiry(bot, dp))  # Запускаем проверку авторизации как фоновую задачу
 
         # начинаем поллинг: бот часто обращается к Telegram и спрашивает, не пришло ли обновление
         await dp.start_polling(bot)
@@ -65,11 +79,11 @@ async def main():
 
     # Завершение работы бота
     finally:
-        task.cancel()  # Отменяем фоновую задачу
-        try:
-            await task  # Ждем завершения задачи
-        except asyncio.CancelledError:
-            pass
+        # task.cancel()  # Отменяем фоновую задачу
+        # try:
+        #     await task  # Ждем завершения задачи
+        # except asyncio.CancelledError:
+        #     pass
         await bot.session.close()  # освобождает ресурсы (HTTP-соединения)
         print("Бот отключён")
 
