@@ -16,7 +16,8 @@ from aiogram.fsm.context import FSMContext
 
 # Работа с датой/временем
 # datetime - для работы с датами и временем (например, фиксация времени авторизации)
-from datetime import datetime
+# from datetime import datetime
+import time
 
 # Для логирования ошибок
 import logger
@@ -27,10 +28,13 @@ from dotenv import load_dotenv  # загрузка переменных из .en
 
 # Кастомные модули
 import app.keyboards as kb  # Локальный модуль с клавиатурами
-from app.storage import user_storage, UserData  # user_storage - ваше хранилище данных пользователей
+# from app.storage import SQLiteStorage
+# from app.storage import user_storage, UserData  # user_storage - ваше хранилище данных пользователей
 # UserData - класс для хранения данных пользователя
 from app.valueai_client import ValueAIClient  # Кастомный клиент для работы с внешним API
-from app.auth_manager import AuthManager  # Модуль для управления аутентификацией (получение/обновление auth-token)
+from app.auth_valueai import AuthValuai  # Модуль для управления аутентификацией (получение/обновление auth-token)
+from app.auth_bot import AuthBot
+# from config import FSM_DB_PATH
 
 router = Router()  # Создаем экземпляр роутера
 load_dotenv('.env')  # Загружаем переменные окружения из файла .env
@@ -40,7 +44,8 @@ VALUEAI_LOGIN = os.getenv("VALUEAI_LOGIN")  # Логин для аутентиф
 VALUEAI_PASSWORD = os.getenv("VALUEAI_PASSWORD")  # Пароль для аутентификации в ValueAI
 
 # Создаем менеджер аутентификации, передавая ему полученные учетные данные
-auth_manager = AuthManager(VALUEAI_LOGIN, VALUEAI_PASSWORD)
+auth_manager = AuthValuai(VALUEAI_LOGIN, VALUEAI_PASSWORD)
+auth_system = AuthBot()
 
 # Инициализируем клиент для работы с API ValueAI, передавая ему менеджер аутентификации
 valueai_client = ValueAIClient(auth_manager)
@@ -48,8 +53,10 @@ valueai_client = ValueAIClient(auth_manager)
 
 # Устанавливаем кастомные состояния
 class UserStates(StatesGroup):
-    login = State()
-    password = State()
+    login = State()           # Ввод логина
+    password = State()        # Ввод пароля
+    auth_confirmed = State()  # Успешная авторизация
+    banned = State()          # Блокировка пользователя
 
 
 # Обработчик команды /start
@@ -67,18 +74,26 @@ async def cmd_start(message: Message, state: FSMContext):
 @router.message(UserStates.login)
 async def process_login(message: Message, state: FSMContext):
     # Ниже вставим поиск данного логина (если корректно ввели) в БД доступа
-    if not message.text.endswith("@waveaccess.global"):  # Проверяем, что логин заканчивается на "@waveaccess.global"
+    # Проверяем, что логин заканчивается на "@waveaccess.global" и вообще существует ли
+    if not message.text.endswith("@waveaccess.global") or not auth_system.user_exists(message.text):
         # Если проверка не пройдена - отправляем сообщение об ошибке
         await message.answer("Некорректный логин! Должен быть в формате name@waveaccess.global")
         return  # Выходим из функции, не меняя состояние -> снова запускается обработчик данного состояния
 
     # Сохраняем введенный логин в хранилище FSM
     # Это позволит использовать его на следующем шаге (ввод пароля)
-    await state.update_data(login=message.text)
+    data = await state.update_data(login=message.text)
+    print("Данные сохранены:", data)
+    stored = await state.get_data()
+    print("get_data сразу после обновления:", stored)
+    # state_data = await storage.debug_state(StorageKey(chat_id=message.chat.id, user_id=message.from_user.id))
+    # print(f"Состояние в БД: {state_data}")
+    print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
 
     # Меняем состояние пользователя на UserStates.password
     # Теперь бот будет ожидать ввод пароля
     await state.set_state(UserStates.password)
+    print("До get_data в password после смены состояния:", await state.get_data())
 
     # Отправляем пользователю сообщение с инструкцией
     await message.answer("Теперь введите ваш пароль:")
@@ -88,25 +103,84 @@ async def process_login(message: Message, state: FSMContext):
 # Срабатывает только когда пользователь в состоянии "ввода пароля"
 @router.message(UserStates.password)
 async def process_password(message: Message, state: FSMContext):
-    if not message.text:  # Проверка что пароль не пустой (вот здесь вставим логику проверки пароля для данного логина)
+    user_data = await state.get_data()
+    print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
+    print(f"Данные получены: {user_data}")  # ← Отладка
+    user_login = user_data.get('login')
+    user_password = message.text
+
+    # ФУНКЦИЯ ПРОВЕРКИ ЛОГИНА И ПАРОЛЯ В БД ДОСТУПА
+    is_confirmed = auth_system.is_authenticate(user_login, user_password)
+
+    if not is_confirmed:
         await message.answer("Неверный пароль! Попробуйте еще раз.")  # Отправка сообщения об ошибке если пароль пустой
         return  # Выход из функции без изменения состояния
 
-    # Создание нового объекта данных пользователя
-    user_data = UserData()
+    # ЗАКОММЕНТИРОВАННОЕ НИЖЕ ОСТАЛОСЬ ОТ ПРЕЖНЕЙ РЕАЛИЗАЦИИ СОХРАНЕНИЯ ДАТЫ АВТОРИЗАЦИИ
+    # # Создание нового объекта данных пользователя
+    # user_data = UserData()
+    #
+    # # Фиксация времени последней успешной авторизации
+    # user_data.last_auth = datetime.now()  # Текущее время
+    #
+    # # Сохранение данных пользователя в хранилище
+    # # Ключ - ID пользователя Telegram (message.from_user.id)
+    # user_storage[message.from_user.id] = user_data  # сохраняем
 
-    # Фиксация времени последней успешной авторизации
-    user_data.last_auth = datetime.now()  # Текущее время
-
-    # Сохранение данных пользователя в хранилище
-    # Ключ - ID пользователя Telegram (message.from_user.id)
-    user_storage[message.from_user.id] = user_data  # сохраняем
-
-    # Очистка состояния FSM (выход из цепочки авторизации)
-    await state.clear()
+    # Меняем состояние - авторизация подтверждена
+    await state.set_state(UserStates.auth_confirmed)
 
     # Отправка сообщения об успешной авторизации
-    await message.answer("Вы успешно авторизованы! Срок действия авторизации - 7 дней.")
+    await message.answer("Вы успешно авторизованы! Можете задавать вопросы!")
+
+
+# Обработчик состояния UserStates.auth_confirmed
+@router.message(UserStates.auth_confirmed)
+async def handle_user_message(message: Message):
+    """
+    Обработчик всех текстовых сообщений, не попавших в другие обработчики.
+    Отправляет запрос к ИИ-модели и возвращает ответ пользователю.
+    """
+
+    # 1. Отправляем сообщение "Обработка запроса..."
+    thinking_msg = await message.answer("Обработка запроса...")
+    start_time = time.time()  # Засекаем время начала обработки
+
+    try:
+        # 2. Отправляем запрос к ИИ-ассистенту
+        response = await valueai_client.send_message_to_llm(message.text)
+
+        # 3. Очищаем ответ от технической информации (все после ******)
+        response = response.split('**********', 1)[0].strip()
+
+        # 4. Проверяем, что ответ не пустой
+        if not response:
+            raise ValueError("Пустой ответ от ИИ")
+
+    except Exception as e:
+        # 5. Логируем ошибку для дальнейшего анализа
+        logger.error(f"Ошибка обработки сообщения: {e}", message)
+
+        # 6. Формируем запасной вариант ответа
+        response = (
+            "Извините, не удалось обработать ваш запрос. "
+            "Попробуйте переформулировать вопрос или обратитесь позже."
+        )
+
+    # 7. Удаляем сообщение "Обработка запроса..."
+    await thinking_msg.delete()
+
+    # 8. Рассчитываем время выполнения
+    processing_time = round(time.time() - start_time, 2)
+
+    # 9. Формируем финальное сообщение с временем обработки
+    final_response = (
+        f"{response}\n\n"
+        f"⏱ Время обработки: {processing_time} сек."
+    )
+
+    # 10. Отправляем ответ пользователю
+    await message.answer(text=final_response)
 
 
 # Обработчик команды /menu
@@ -180,34 +254,3 @@ async def about_bot(callback: CallbackQuery):
         "Повторная авторизация нужна на случай, если ваши данные устарели",
         show_alert=True  # Создает модальное окно, требующее подтверждения
     )
-
-
-@router.message()
-async def handle_user_message(message: Message):
-    """
-    Обработчик всех текстовых сообщений, не попавших в другие обработчики.
-    Отправляет запрос к ИИ-модели и возвращает ответ пользователю.
-    """
-    try:
-        # 1. Отправляем запрос к ИИ-ассистенту
-        response = await valueai_client.send_message_to_llm(message.text)
-
-        # 2. Очищаем ответ от технической информации (все после ******)
-        response = response.split('**********', 1)[0].strip()
-
-        # 3. Проверяем, что ответ не пустой
-        if not response:
-            raise ValueError("Пустой ответ от ИИ")
-
-    except Exception as e:
-        # Логируем ошибку для дальнейшего анализа
-        logger.error(f"Ошибка обработки сообщения: {e}", message)
-
-        # Формируем запасной вариант ответа
-        response = (
-            "Извините, не удалось обработать ваш запрос. "
-            "Попробуйте переформулировать вопрос или обратитесь позже."
-        )
-
-    # 4. Отправляем ответ пользователю
-    await message.answer(text=response)

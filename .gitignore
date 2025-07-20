@@ -51,4 +51,7 @@ Thumbs.db
 
 # Игнорировать файлы с секретными данными
 .env
-.venv
+.venv/
+states.db
+app/auth_db.json
+config.py
