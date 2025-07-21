@@ -5,11 +5,11 @@ from aiogram import F, Router
 # Message - класс для работы с текстовыми/медиа-сообщениями
 # CallbackQuery - обработка нажатий на инлайн-кнопки
 from aiogram.types import Message, CallbackQuery
-# CommandStart - фильтр для команды /start
-# Command - фильтр для любых команд (например, Command("help"))
+# CommandStart - фильтр для команды /start                          ###
+# Command - фильтр для любых команд (например, Command("help"))     ###
 from aiogram.filters import CommandStart, Command
-# CommandStart - фильтр для команды /start
-# Command - фильтр для любых команд (например, Command("help"))
+# CommandStart - фильтр для команды /start                          ###
+# Command - фильтр для любых команд (например, Command("help"))     ###
 from aiogram.fsm.state import State, StatesGroup
 # FSMContext - управление состоянием пользователя (установка/получение данных)
 from aiogram.fsm.context import FSMContext
@@ -35,6 +35,11 @@ from app.valueai_client import ValueAIClient  # Кастомный клиент 
 from app.auth_valueai import AuthValuai  # Модуль для управления аутентификацией (получение/обновление auth-token)
 from app.auth_bot import AuthBot
 # from config import FSM_DB_PATH
+
+from app.ww_the_database import connect_db, user_exists, is_authenticated, save_session, save_question_stat
+
+# Глобальный пул
+pool = None
 
 router = Router()  # Создаем экземпляр роутера
 load_dotenv('.env')  # Загружаем переменные окружения из файла .env
@@ -62,6 +67,8 @@ class UserStates(StatesGroup):
 # Обработчик команды /start
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
+    global pool
+    pool = await connect_db()
     await message.answer(
         "Добро пожаловать в HR-чатбот!\n\n"
         "Пожалуйста, введите ваш логин в формате name@waveaccess.global"
@@ -80,20 +87,22 @@ async def process_login(message: Message, state: FSMContext):
         await message.answer("Некорректный логин! Должен быть в формате name@waveaccess.global")
         return  # Выходим из функции, не меняя состояние -> снова запускается обработчик данного состояния
 
-    # Сохраняем введенный логин в хранилище FSM
-    # Это позволит использовать его на следующем шаге (ввод пароля)
-    data = await state.update_data(login=message.text)
-    print("Данные сохранены:", data)
-    stored = await state.get_data()
-    print("get_data сразу после обновления:", stored)
-    # state_data = await storage.debug_state(StorageKey(chat_id=message.chat.id, user_id=message.from_user.id))
-    # print(f"Состояние в БД: {state_data}")
-    print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
+    await state.update_data(login=login)
+    # ХЗ
+    # # Сохраняем введенный логин в хранилище FSM 
+    # # Это позволит использовать его на следующем шаге (ввод пароля)
+    # data = await state.update_data(login=message.text)
+    # print("Данные сохранены:", data)
+    # stored = await state.get_data()
+    # print("get_data сразу после обновления:", stored)
+    # # state_data = await storage.debug_state(StorageKey(chat_id=message.chat.id, user_id=message.from_user.id))
+    # # print(f"Состояние в БД: {state_data}")
+    # print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
 
     # Меняем состояние пользователя на UserStates.password
     # Теперь бот будет ожидать ввод пароля
     await state.set_state(UserStates.password)
-    print("До get_data в password после смены состояния:", await state.get_data())
+    # # print("До get_data в password после смены состояния:", await state.get_data()) ### как я понял, это индикатор
 
     # Отправляем пользователю сообщение с инструкцией
     await message.answer("Теперь введите ваш пароль:")
@@ -104,15 +113,20 @@ async def process_login(message: Message, state: FSMContext):
 @router.message(UserStates.password)
 async def process_password(message: Message, state: FSMContext):
     user_data = await state.get_data()
-    print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
-    print(f"Данные получены: {user_data}")  # ← Отладка
-    user_login = user_data.get('login')
-    user_password = message.text
+    login = user_data.get("login")
+    password = message.text.strip()
 
-    # ФУНКЦИЯ ПРОВЕРКИ ЛОГИНА И ПАРОЛЯ В БД ДОСТУПА
-    is_confirmed = auth_system.is_authenticate(user_login, user_password)
+    # Проверка на SQLite3
+    # print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
+    # print(f"Данные получены: {user_data}")  # ← Отладка
+    # user_login = user_data.get('login')
+    # user_password = message.text
 
-    if not is_confirmed:
+    # # ФУНКЦИЯ ПРОВЕРКИ ЛОГИНА И ПАРОЛЯ В БД ДОСТУПА
+    # is_confirmed = auth_system.is_authenticate(user_login, user_password)
+
+    # if not is_confirmed:
+    if not await is_authenticated(pool, login, password):
         await message.answer("Неверный пароль! Попробуйте еще раз.")  # Отправка сообщения об ошибке если пароль пустой
         return  # Выход из функции без изменения состояния
 
@@ -127,6 +141,7 @@ async def process_password(message: Message, state: FSMContext):
     # # Ключ - ID пользователя Telegram (message.from_user.id)
     # user_storage[message.from_user.id] = user_data  # сохраняем
 
+    await save_session(pool, tg_id=message.from_user.id, login=login)
     # Меняем состояние - авторизация подтверждена
     await state.set_state(UserStates.auth_confirmed)
 
@@ -147,6 +162,9 @@ async def handle_user_message(message: Message):
     start_time = time.time()  # Засекаем время начала обработки
 
     try:
+        # 2-. Сохраняем в статистику
+        await save_question_stat(pool, message.text.strip())
+
         # 2. Отправляем запрос к ИИ-ассистенту
         response = await valueai_client.send_message_to_llm(message.text)
 

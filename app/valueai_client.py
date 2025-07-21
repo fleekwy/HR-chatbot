@@ -86,7 +86,7 @@ class ValueAIClient:
                 except (KeyError, IndexError):  # Обработка ошибок структуры ответа
                     raise APIError("Ответ LLM не найден в истории")
 
-        # Основной метод для отправки сообщения в LLM
+    # Основной метод для отправки сообщения в LLM
     async def send_message_to_llm(self, message: str) -> str:
         """Отправляет сообщение в LLM и возвращает ответ."""
         url = f"{self.base_url}chat"  # URL для создания чата

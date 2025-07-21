@@ -1,16 +1,16 @@
+import asyncio
 # Асинхронная библиотека стандартной библиотеки Python
 # Используется для работы с асинхронным кодом (корутины, задачи, event loop)
 
 # КОРУТИНЫ — это специальные функции, которые могут приостанавливать своё выполнение и возобновлять
 # его позже, не теряя контекст. Они используются для асинхронного программирования и позволяют эффективно
 # работать с I/O-операциями (сетевые запросы, чтение файлов и т.д.), не блокируя основной поток.
-import asyncio
 
 # Основные классы из aiogram 3.x:
 # Bot - класс для взаимодействия с Telegram Bot API
 # Dispatcher - центральный класс для обработки обновлений (update)
 from aiogram import Bot, Dispatcher
-from app.storage import SQLiteStorage
+from app.storage import SQLiteStorage ### не оч понятно
 from pathlib import Path
 
 # Модуль стандартной библиотеки Python для работы с операционной системой
@@ -54,9 +54,9 @@ async def main():
     # Путь от корня проекта до states.db
     # db_path = Path(__file__).parent / "states.db"  # main.py и states.db в одной папке
 
-    db_path = Path(__file__).parent / "states.db"
-    print(f"Путь к states.db: {db_path}")
-    print(f"Файл существует: {db_path.exists()}")
+    db_path = Path(__file__).parent / "states.db"  ###
+    print(f"Путь к states.db: {db_path}")          ###
+    print(f"Файл существует: {db_path.exists()}")  ###
     storage = SQLiteStorage(db_path=FSM_DB_PATH)  # Хранилище в оперативной памяти - явно передаем путь
     dp = Dispatcher(storage=storage)  # Создаётся диспетчер (Dispatcher) — центральный компонент aiogram, который:
     # принимает обновления от Telegram (сообщения, команды, колбэки), перенаправляет их в ваши обработчики (роутеры).
