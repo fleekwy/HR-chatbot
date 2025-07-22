@@ -1,12 +1,6 @@
 import json
 import os
 from pathlib import Path
-from hashlib import sha256  # Для безопасного хранения паролей
-
-
-def _hash_password(password: str) -> str:
-    """Хеширование пароля для безопасного хранения"""
-    return sha256(password.encode()).hexdigest()
 
 
 class AuthBot:
@@ -25,7 +19,7 @@ class AuthBot:
             with open(self.db_path, 'w') as f:
                 json.dump({"users": {}}, f)  # Создаем файл с пустым словарем пользователей
 
-    def register_user(self, login: str, password: str) -> bool:
+    def register_user(self, login: str) -> bool:
         """Регистрация нового пользователя"""
         with open(self.db_path, 'r+') as f:
             data = json.load(f)
@@ -33,7 +27,7 @@ class AuthBot:
                 return False  # Пользователь уже существует
 
             data["users"][login] = {
-                "password_hash": _hash_password(password),
+                "is_admin": False,
                 "tg_id": []
             }
             f.seek(0)
@@ -64,6 +58,21 @@ class AuthBot:
             print(f"Ошибка добавления tg_id: {e}")
             return False
 
+    def is_admin(self, login: str) -> bool:
+        try:
+            # Читаем текущие данные
+            with open(self.db_path, 'r') as f:
+                data = json.load(f)
+            try:
+                return data["users"][login]["is_admin"]
+            except Exception as e:
+                print(f"Ошибка проверки на админа: {e}")
+                return False
+
+        except Exception as e:
+            print(f"Ошибка проверки на админа: {e}")
+            return False
+
     def user_exists(self, login: str) -> bool:
         """Проверяет, существует ли пользователь с указанным логином"""
         print(f'*{login}*')
@@ -75,19 +84,19 @@ class AuthBot:
         except FileNotFoundError:
             return False
 
-    def is_authenticate(self, login: str, password: str) -> bool:
-        """Проверка логина и пароля"""
-        try:
-            with open(self.db_path, 'r') as f:
-                data = json.load(f)
-                user = data["users"].get(login)
-
-                if not user:
-                    return False  # Пользователь не найден
-
-                return user["password_hash"] == _hash_password(password)
-        except FileNotFoundError:
-            return False  # Файл базы не существует
+    # def is_authenticate(self, login: str, password: str) -> bool:
+    #     """Проверка логина и пароля"""
+    #     try:
+    #         with open(self.db_path, 'r') as f:
+    #             data = json.load(f)
+    #             user = data["users"].get(login)
+    #
+    #             if not user:
+    #                 return False  # Пользователь не найден
+    #
+    #             return user["password_hash"] == _hash_password(password)
+    #     except FileNotFoundError:
+    #         return False  # Файл базы не существует
 
     def remove_user(self, login: str) -> list:
         """Деактивация пользователя и удаление его данных по логину"""
@@ -117,25 +126,25 @@ class AuthBot:
             return []
 
 
-async def test(login: str, password: str):
-    auth = AuthBot()
-
-    # Регистрация нового пользователя
-    auth.register_user(login, password)
-
-    print(auth.user_exists("Daniil.Kondratyuk@waveaccess.global"))
-    print(password)
-    # Проверка авторизации
-    if auth.is_authenticate(login, password):
-        print("Авторизация успешна!")
-    else:
-        print("Неверный логин или пароль")
-
-    # # Деактивация пользователя
-    # auth.deactivate_user(login)
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(test(login="Daniil.Kondratyuk@waveaccess.global", password="fleekwy&09"))
+# async def test(login: str, password: str):
+#     auth = AuthBot()
+#
+#     # Регистрация нового пользователя
+#     auth.register_user(login, password)
+#
+#     print(auth.user_exists("Daniil.Kondratyuk@waveaccess.global"))
+#     print(password)
+#     # Проверка авторизации
+#     if auth.is_authenticate(login, password):
+#         print("Авторизация успешна!")
+#     else:
+#         print("Неверный логин или пароль")
+#
+#     # # Деактивация пользователя
+#     # auth.deactivate_user(login)
+#
+#
+# if __name__ == "__main__":
+#     import asyncio
+#
+#     asyncio.run(test(login="Daniil.Kondratyuk@waveaccess.global", password="fleekwy&09"))

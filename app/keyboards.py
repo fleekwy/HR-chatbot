@@ -1,48 +1,38 @@
 # Необходимые классы для создания инлайн-клавиатур из aiogram
 from aiogram.types import (InlineKeyboardMarkup, InlineKeyboardButton)
 
-# Создание основной инлайн-клавиатуры (main)
-main = InlineKeyboardMarkup(
+start_kb = InlineKeyboardMarkup(
     inline_keyboard=[
-        # Первый ряд кнопок (массив с одной кнопкой)
         [InlineKeyboardButton(
-            text="Re-authorization",  # Текст на кнопке
-            callback_data="reauthorisation"  # Данные, которые вернутся при нажатии
+            text="Войти как пользователь",
+            callback_data="sign_in_user"
         )],
-
-        # Второй ряд кнопок
         [InlineKeyboardButton(
-            text="About us",
-            callback_data="about_us"
-        )],
-
-        # Третий ряд кнопок
-        [InlineKeyboardButton(
-            text="Help",
-            callback_data="help"
+            text="Войти как админ",
+            callback_data="sign_in_admin"
         )]
     ]
 )
 
-# Создание инлайн-клавиатуры "О нас" (about_us)
-about_us = InlineKeyboardMarkup(
+# Создание основной инлайн-клавиатуры (main)
+main_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         # Первый ряд - кнопка с внешней ссылкой
         [InlineKeyboardButton(
-            text='About company',
+            text='О компании',
             url='https://www.waveaccess.ru/'  # Внешний URL вместо callback_data
         )],
 
         # Второй ряд - обычная callback-кнопка
         [InlineKeyboardButton(
-            text='About bot',
-            callback_data='about_bot'
+            text='Документация бота',
+            url='https://disk.yandex.ru/i/DcN71l1uadi3cA'
         )],
 
         # Третий ряд - кнопка возврата
         [InlineKeyboardButton(
-            text='🔙 Back',  # Эмодзи для лучшей визуализации
-            callback_data='back_to_main'  # Обработчик вернет в главное меню
+            text='Чё-то ещё надо вставить',  # Эмодзи для лучшей визуализации
+            callback_data='something_else'  # Обработчик вернет в главное меню
         )]
     ]
 )
