@@ -10,7 +10,7 @@ import asyncio
 # Bot - класс для взаимодействия с Telegram Bot API
 # Dispatcher - центральный класс для обработки обновлений (update)
 from aiogram import Bot, Dispatcher
-from app.storage import SQLiteStorage
+from app.sqlite_storage import SQLiteStorage
 from pathlib import Path
 
 # Модуль стандартной библиотеки Python для работы с операционной системой
