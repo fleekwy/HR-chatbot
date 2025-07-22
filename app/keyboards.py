@@ -46,3 +46,11 @@ about_us = InlineKeyboardMarkup(
         )]
     ]
 )
+
+
+def get_admin_kb():
+    buttons = [
+        [InlineKeyboardButton(text="Add user", callback_data="admin_add_user")],
+        [InlineKeyboardButton(text="Remove user", callback_data="admin_remove_user")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

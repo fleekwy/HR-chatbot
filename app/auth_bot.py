@@ -29,17 +29,40 @@ class AuthBot:
         """Регистрация нового пользователя"""
         with open(self.db_path, 'r+') as f:
             data = json.load(f)
-            if login in data["users"] and data["users"][login]["is_active"]:
+            if login in data["users"]:
                 return False  # Пользователь уже существует
 
             data["users"][login] = {
                 "password_hash": _hash_password(password),
-                "is_active": True
+                "tg_id": []
             }
             f.seek(0)
             json.dump(data, f, indent=4)
             f.truncate()
         return True
+
+    def add_session(self, login: str, tg_id: int) -> bool:
+        """Добавляет tg_id в список для указанного логина"""
+        try:
+            # Читаем текущие данные
+            with open(self.db_path, 'r') as f:
+                data = json.load(f)
+
+            # Добавляем новый tg_id в список (если его ещё нет)
+            if tg_id not in data["users"][login]["tg_id"]:
+                data["users"][login]["tg_id"].append(tg_id)
+            else:
+                return False  # ID уже существует
+
+            # Записываем обновлённые данные
+            with open(self.db_path, 'w') as f:
+                json.dump(data, f, indent=4)
+
+            return True
+
+        except Exception as e:
+            print(f"Ошибка добавления tg_id: {e}")
+            return False
 
     def user_exists(self, login: str) -> bool:
         """Проверяет, существует ли пользователь с указанным логином"""
@@ -59,25 +82,39 @@ class AuthBot:
                 data = json.load(f)
                 user = data["users"].get(login)
 
-                if not user or not user["is_active"]:
-                    return False  # Пользователь не найден или деактивирован
+                if not user:
+                    return False  # Пользователь не найден
 
                 return user["password_hash"] == _hash_password(password)
         except FileNotFoundError:
             return False  # Файл базы не существует
 
-    def deactivate_user(self, login: str) -> bool:
-        """Деактивация пользователя"""
-        with open(self.db_path, 'r+') as f:
-            data = json.load(f)
-            if login not in data["users"]:
-                return False
+    def remove_user(self, login: str) -> list:
+        """Деактивация пользователя и удаление его данных по логину"""
+        try:
+            # Чтение данных из файла
+            with open(self.db_path, 'r') as f:
+                data = json.load(f)
 
-            data["users"][login]["is_active"] = False
-            f.seek(0)
-            json.dump(data, f, indent=4)
-            f.truncate()
-        return True
+            # Проверка существования пользователя
+            if login not in data.get("users", {}):
+                return []
+
+            # Сохраняем tg_id для возврата
+            tg_id = data["users"][login]["tg_id"]
+
+            # Удаляем пользователя по ключу-логину
+            del data["users"][login]
+
+            # Перезаписываем файл с обновлёнными данными
+            with open(self.db_path, 'w') as f:
+                json.dump(data, f, indent=4)
+
+            return tg_id
+
+        except Exception as e:
+            print(f"Ошибка при удалении пользователя: {e}")
+            return []
 
 
 async def test(login: str, password: str):

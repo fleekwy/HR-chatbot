@@ -61,3 +61,22 @@
 #                     # Ловим любые исключения при обработке пользователя
 #                     # (например, если бот заблокирован или пользователь не найден)
 #                     print(f"Ошибка при обработке пользователя {user_id}: {e}")
+
+
+
+# from aiogram.types import BotCommand
+#
+# private_commands = [
+#     BotCommand(command="start", description="Запустить бота"),
+#     BotCommand(command="help", description="Помощь"),
+# ]
+#
+# admin_commands = private_commands + [
+#     BotCommand(command="admin", description="Админ-панель"),
+# ]
+#
+# # При старте бота
+# async def setup_bot_commands(bot: Bot):
+#     await bot.set_my_commands(private_commands, scope=types.BotCommandScopeAllPrivateChats())
+#     for admin_id in ADMIN_IDS:
+#         await bot.set_my_commands(admin_commands, scope=types.BotCommandScopeChat(chat_id=admin_id))
