@@ -66,8 +66,8 @@ class ValueAIClient:
         }
 
     @retry(
-        wait=wait_exponential(multiplier=0.5, min=0.5, max=3),
-        stop=stop_after_attempt(6),
+        wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
+        stop=stop_after_attempt(8),
         retry=retry_if_exception_type((aiohttp.ClientError, APIError))
     )
     async def get_chat_response(self, chat_url: str, headers: dict) -> str:

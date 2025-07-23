@@ -100,23 +100,36 @@ class AdminStates(StatesGroup):
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.set_state(UserStates.start)
+    await message.delete()
     await message.answer(
         "Добро пожаловать в HR-чатбот! Перед началом работы необходимо пройти авторизацию",
         reply_markup=kb.start_kb
     )
-    print(f'id = {message.from_user.id}')
+    # print(f'id = {message.from_user.id}')
     # await state.set_state(UserStates.login)  # Сразу устанавливаем состояние UserStates.login и запускаем авторизацию
 
 
 @router.callback_query(F.data == "sign_in_user")
-async def about_us(callback: CallbackQuery, state: FSMContext):
+async def sign_in_user(callback: CallbackQuery, state: FSMContext):
+    try:
+        # Удаляем само сообщение с клавиатурой
+        await callback.message.delete()
+    except Exception as e:
+        # Если сообщение уже удалено или нет прав на удаление
+        print(f"Ошибка при удалении сообщения: {e}")
     await callback.answer()
     await callback.message.answer("Пожалуйста, введите ваш логин в формате name@waveaccess.global")
     await state.set_state(UserStates.login)
 
 
 @router.callback_query(F.data == "sign_in_admin")
-async def about_us(callback: CallbackQuery, state: FSMContext):
+async def sign_in_admin(callback: CallbackQuery, state: FSMContext):
+    try:
+        # Удаляем само сообщение с клавиатурой
+        await callback.message.delete()
+    except Exception as e:
+        # Если сообщение уже удалено или нет прав на удаление
+        print(f"Ошибка при удалении сообщения: {e}")
     await callback.answer()
     await callback.message.answer("Пожалуйста, введите ваш логин в формате name@waveaccess.global")
     await state.set_state(AdminStates.login)
@@ -131,22 +144,62 @@ async def cmd_help(message: Message):
         "Выберите необходимую кнопку:",  # Текст сообщения
         reply_markup=kb.main_kb  # Прикрепляем клавиатуру из предварительно созданных
     )
+    await message.delete()
 
 
 # 2. Общие callback-запросы (без состояний)
 # Обработчик нажатия на кнопку с callback_data "about_us"
-@router.callback_query(F.data == "something_else")
+@router.callback_query(F.data == "komands")
 async def about_us(callback: CallbackQuery):
-    await callback.answer("Привет!)")
+    await callback.message.edit_text("/start - команда заново запускает авторизацию в системе\n\n"
+                                     "/menu - команда открывает предыдущее меню\n\n"
+                                     "/admin - команда открывает кнопки админа", reply_markup=kb.kb_comands)
+
+
+@router.callback_query(F.data == "close_main_kb")
+async def close_commands_handler(callback: CallbackQuery):
+    try:
+        # Удаляем само сообщение с клавиатурой
+        await callback.message.delete()
+    except Exception as e:
+        # Если сообщение уже удалено или нет прав на удаление
+        print(f"Ошибка при удалении сообщения: {e}")
+
+    # Подтверждаем обработку callback (убираем "часики" на кнопке)
+    await callback.answer("Клавиатура скрыта")
+
+
+@router.callback_query(F.data == "close_comands")
+async def close_commands_handler(callback: CallbackQuery):
+    try:
+        # Удаляем само сообщение с клавиатурой
+        await callback.message.delete()
+    except Exception as e:
+        # Если сообщение уже удалено или нет прав на удаление
+        print(f"Ошибка при удалении сообщения: {e}")
+
+    # Подтверждаем обработку callback (убираем "часики" на кнопке)
+    await callback.answer("Клавиатура скрыта")
+
+
+@router.callback_query(F.data == "back_to_menu")
+async def close_commands_handler(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "Выберите необходимую кнопку:",
+        reply_markup=kb.main_kb
+    )
+    await callback.answer()
 
 
 # 3. Админские команды (без состояний, с проверкой прав)
 # Обработчик команды /admin
 @router.message(Command("admin"))
 async def admin_panel(message: Message, state: FSMContext):
+    await asyncio.sleep(1)
+    await message.delete()
     data = await state.get_data()
     if data.get('is_admin') == "true":
-        await message.answer("Admin panel:", reply_markup=kb.get_admin_kb())
+        await message.answer("Панель админа:", reply_markup=kb.get_admin_kb())
     else:
         await message.answer("Недостаточно прав!")
 
@@ -164,7 +217,7 @@ async def start_adding_user(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Недостаточно прав!")
 
 
-@router.callback_query(F.data == "admin_remove_user", F.from_user.id.in_(ADMIN_IDS))
+@router.callback_query(F.data == "admin_remove_user")
 async def start_removing_user(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     if data.get('is_admin') == "true":
@@ -173,6 +226,19 @@ async def start_removing_user(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
     else:
         await callback.answer("Недостаточно прав!")
+
+
+@router.callback_query(F.data == "close_admin_kb")
+async def start_removing_user(callback: CallbackQuery):
+    try:
+        # Удаляем само сообщение с клавиатурой
+        await callback.message.delete()
+    except Exception as e:
+        # Если сообщение уже удалено или нет прав на удаление
+        print(f"Ошибка при удалении сообщения: {e}")
+
+    # Подтверждаем обработку callback (убираем "часики" на кнопке)
+    await callback.answer("Клавиатура скрыта")
 
 
 # 5. Обработчики состояний админа (в порядке важности)
@@ -210,7 +276,6 @@ async def process_user_removal(message: Message, state: FSMContext, auth_bot: Da
 
             storage = SQLiteStorage(db_path=FSM_DB_PATH)
             context = FSMContext(storage, StorageKey(chat_id=_id, user_id=_id, bot_id=message.bot.id))
-            print(context)
             await context.set_data({})
             await context.set_state(UserStates.banned)
 
@@ -236,6 +301,7 @@ async def process_login(message: Message, state: FSMContext, auth_bot: Database)
         return
     await message.answer("Вы успешно вошли как админ!")
     await state.update_data(is_admin="true")
+    await message.answer("Готов отвечать на ваши вопросы!")
     await state.set_state(AdminStates.admin)
 
 
@@ -264,20 +330,21 @@ async def process_login(message: Message, state: FSMContext, auth_bot: Database)
     alphabet = string.ascii_letters + string.digits  # A-Z, a-z, 0-9
     p_key = ''.join(secrets.choice(alphabet) for _ in range(10))
 
-    data = await state.update_data(login=message.text, pass_key=p_key, is_admin="false")
-    print("Данные сохранены:", data)
-    stored = await state.get_data()
-    print("get_data сразу после обновления:", stored)
+    await state.update_data(login=message.text, pass_key=p_key, is_admin="false")
+    # print("Данные сохранены:", data)
+    # stored = await state.get_data()
+    # print("get_data сразу после обновления:", stored)
     # state_data = await storage.debug_state(StorageKey(chat_id=message.chat.id, user_id=message.from_user.id))
     # print(f"Состояние в БД: {state_data}")
-    print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
+    # print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
 
     # Меняем состояние пользователя на UserStates.password
     # Теперь бот будет ожидать ввод пароля
     await state.set_state(UserStates.password)
-    print("До get_data в password после смены состояния:", await state.get_data())
+    # print("До get_data в password после смены состояния:", await state.get_data())
 
     send_key_to_email(message.text, p_key)
+    print(p_key)
 
     # Отправляем пользователю сообщение с инструкцией
     await message.answer("Отлично! Мы отправили вам на почту одноразовый 10-значный код, скопируйте и вставьте сюда")
@@ -288,8 +355,8 @@ async def process_login(message: Message, state: FSMContext, auth_bot: Database)
 @router.message(UserStates.password)
 async def process_password(message: Message, state: FSMContext, auth_bot: Database):
     user_data = await state.get_data()
-    print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
-    print(f"Данные получены: {user_data}")  # ← Отладка
+    # print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
+    # print(f"Данные получены: {user_data}")  # ← Отладка
     user_login = user_data.get('login')
     pass_key = user_data.get('pass_key')
 
@@ -308,7 +375,7 @@ async def process_password(message: Message, state: FSMContext, auth_bot: Databa
     # # Ключ - ID пользователя Telegram (message.from_user.id)
     # user_storage[message.from_user.id] = user_data  # сохраняем
 
-    print(message.from_user.id)
+    # print(message.from_user.id)
     await auth_bot.add_session(message.from_user.id, user_login)
 
     # Отправка сообщения об успешной авторизации
@@ -340,7 +407,6 @@ async def ask_llm(message: Message, auth_bot: Database):
         # 2. Отправляем запрос к ИИ-ассистенту
         timers['llm_request_start'] = datetime.now()
         response = await valueai_client.send_message_to_llm(message.text)
-        print(response)
         timers['llm_request_end'] = datetime.now()
 
         # 3. Очищаем ответ от технической информации
