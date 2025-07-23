@@ -1,6 +1,7 @@
 # Импорт стандартного модуля логирования для записи событий и ошибок
 # Позволяет выводить сообщения разных уровней (debug, info, warning, error, critical)
 import logging
+from datetime import datetime
 
 # Импорт декораторов и стратегий из библиотеки tenacity для реализации повторных попыток (retry)
 # - retry: декоратор для повторного выполнения функции при ошибках
@@ -49,99 +50,129 @@ class APIError(Exception):
     pass
 
 
-# Класс для диалога междку клиентом бота и платформой ValueAI
 class ValueAIClient:
-    # Инициализация клиента с менеджером аутентификации
     def __init__(self, auth_manager: AuthValuai):
         self.auth_manager = auth_manager
         self.base_url = "https://ml-request-prod.wavea.cc/api/external/v1/"
 
-    # Метод для получения заголовков с авторизационным токеном
     async def get_headers(self) -> dict:
-        """Возвращает заголовки с актуальным токеном."""
+        start = datetime.now()
         token = await self.auth_manager.get_valid_token()
+        end = datetime.now()
+        duration = round((end - start).total_seconds(), 3)
+        logger.info(f"[PROFILING] get_headers: {duration} сек.")
         return {
             "Authorization": f"Bearer {token}"
         }
 
-    # Метод с автоматическими повторными попытками при ошибках
     @retry(
-        wait=wait_exponential(multiplier=2, min=1, max=10),  # Экспоненциальная задержка
-        stop=stop_after_attempt(8),  # Максимум 8 попыток
-        retry=retry_if_exception_type((aiohttp.ClientError, APIError))  # Повтор только для этих ошибок
+        wait=wait_exponential(multiplier=0.5, min=0.5, max=3),
+        stop=stop_after_attempt(6),
+        retry=retry_if_exception_type((aiohttp.ClientError, APIError))
     )
     async def get_chat_response(self, chat_url: str, headers: dict) -> str:
-        """Получает ответ из чата с повторными попытками."""
-        async with aiohttp.ClientSession() as session:  # Создаем HTTP-сессию
-            async with session.get(chat_url, headers=headers) as response:  # GET-запрос
-                if response.status != 200:  # Проверка статуса ответа
-                    error = await response.text()  # Читаем текст ошибки
-                    raise APIError(f"Ошибка получения ответа: {error}")  # Своё исключение
+        start = datetime.now()
 
-                data = await response.json()  # Парсим JSON-ответ
-                logger.debug(f"data: {data}")  # Логируем сырые данные (уровень DEBUG)
-
+        async with aiohttp.ClientSession() as session:
+            async with session.get(chat_url, headers=headers) as response:
+                if response.status != 200:
+                    error = await response.text()
+                    raise APIError(f"Ошибка получения ответа: {error}")
+                data = await response.json()
+                logger.debug(f"data: {data}")
                 try:
-                    return data['data'][0]['text']  # Извлекаем текст ответа LLM
-                except (KeyError, IndexError):  # Обработка ошибок структуры ответа
+                    result = data['data'][0]['text']
+                except (KeyError, IndexError):
                     raise APIError("Ответ LLM не найден в истории")
 
-    # Основной метод для отправки сообщения в LLM
-    async def send_message_to_llm(self, message: str) -> str:
-        """Отправляет сообщение в LLM и возвращает ответ."""
-        url = f"{self.base_url}chat"  # URL для создания чата
-        headers = await self.get_headers()  # Получаем заголовки с токеном
+        end = datetime.now()
+        duration = round((end - start).total_seconds(), 3)
+        logger.info(f"[PROFILING] get_chat_response: {duration} сек. URL: {chat_url}")
 
-        # Формируем тело запроса с параметрами LLM
+        return result
+
+    async def send_message_to_llm(self, message: str) -> str:
+        # Профилирование времени
+        timers = {
+            'start': datetime.now(),
+        }
+
+        url = f"{self.base_url}chat"
+        headers = await self.get_headers()
+
         payload = {
-            "trained_model_id": 1,  # ID модели
-            "rag_id": 54,  # ID RAG-системы
-            "text": message,  # Текст сообщения пользователя
-            "options": {  # Параметры генерации
-                "temperature": 0.45,  # Креативность ответов
-                "tokens_request_limit": 3000,  # Лимит токенов запроса
-                "tokens_response_limit": 1000,  # Лимит токенов ответа
-                "top_p": 1,  # Параметр разнообразия
-                "frequency_penalty": 0,  # Штраф за частоту
-                "presence_penalty": 0,  # Штраф за повторения
-                # Инструкции
-                "instructions": "Ты — HR-ассистент компании WaveAccess. Следуй следующим инструкциям при"
-                                "ответе: отвечай только на рабочие вопросы, связанные с работой в компании. Если вопрос"
-                                "рабочий - пиши в начале 'Ответ на ваш вопрос',а сам ответ пиши внизу через две строки."
-                                "Во всех остальных случаях - если вопрос не чётко сформулирован, отвечай: "
-                                "'Не могу обработать данный вопрос...Пожалуйста, уточните формулировку.'",
-                "top_k": 9,  # Ограничение кандидатов
-                "similarity_threshold": 0.45,  # Порог схожести
+            "trained_model_id": 1,
+            "rag_id": 54,
+            "text": message,
+            "options": {
+                "temperature": 0.45,
+                "tokens_request_limit": 3000,
+                "tokens_response_limit": 1000,
+                "top_p": 1,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+                "instructions": "Ты — HR-ассистент WaveAccess. Отвечай только чётко-сформулированные вопросы. "
+                                "На рабочие вопросы ответ начни с «Код ответа — 200», "
+                                "через 1 абзац дай информацию. Если вопрос рабочий, но ответа нет — начина также с "
+                                "«Код ответа — 200» а через 1 абзац верни: «Данные не найдены. Уточните у HR» и "
+                                "дай контакты HR. Контакты указывай строго в формате Name.Surname@waveaccess.global. "
+                                "На нерабочие или плохо сформулированные запросы отвечай: в начале пиши «Код "
+                                "ответа — 100» а через абзац - «Нерабочий вопрос. Пожалуйста, переформулируйте». "
+                                "Если дан непонятный набор символов - пиши «Вопрос неясен. Переформулируйте, "
+                                "указав контекст»",
+                "top_k": 9,
+                "similarity_threshold": 0.45,
             }
         }
 
         try:
-            async with aiohttp.ClientSession() as session:  # Новая сессия
-                # 1. Создаем чат (POST-запрос)
+            async with aiohttp.ClientSession() as session:
+                # 1. Создание чата
+                timers['create_chat_start'] = datetime.now()
                 async with session.post(url, json=payload, headers=headers) as response:
-                    if response.status != 200:  # Проверка статуса
+                    if response.status != 200:
                         raise APIError(f"Ошибка создания чата: {response.status}")
-                    data = await response.json()  # Читаем ответ
-                    chat_id = data['id']  # Извлекаем ID чата
-                    logger.info(f'Чат создан: {chat_id}')  # Логируем создание
+                    data = await response.json()
+                    chat_id = data['id']
+                    logger.info(f'Чат создан: {chat_id}')
+                timers['create_chat_end'] = datetime.now()
 
-                chat_url = f"{url}/{chat_id}"  # URL для получения ответа
-
-                # 2. Получаем ответ с повторными попытками
+                # 2. Получение ответа
+                timers['get_response_start'] = datetime.now()
+                chat_url = f"{url}/{chat_id}"
                 answer = await self.get_chat_response(chat_url, headers)
+                timers['get_response_end'] = datetime.now()
 
-                # 3. Удаляем чат (DELETE-запрос)
+                # 3. Удаление чата
+                timers['delete_chat_start'] = datetime.now()
                 async with session.delete(chat_url, headers=headers) as response:
-                    if response.status != 200:  # Проверка статуса
+                    if response.status != 200:
                         logger.warning(f'Ошибка удаления чата: {response.status}')
                     else:
-                        logger.info('Чат успешно удален')  # Логируем удаление
+                        logger.info('Чат успешно удален')
+                timers['delete_chat_end'] = datetime.now()
 
-                return answer  # Возвращаем ответ LLM
+                # 4. Конец
+                timers['end'] = datetime.now()
 
-        except Exception as e:  # Обработка любых ошибок
-            logger.error(f"Ошибка при работе с API: {str(e)}")  # Логируем ошибку
-            raise  # Пробрасываем исключение дальше
+                # Печать профилирования
+                total = (timers['end'] - timers['start']).total_seconds()
+                create_chat = (timers['create_chat_end'] - timers['create_chat_start']).total_seconds()
+                get_response = (timers['get_response_end'] - timers['get_response_start']).total_seconds()
+                delete_chat = (timers['delete_chat_end'] - timers['delete_chat_start']).total_seconds()
+
+                print("\n=== Профилирование send_message_to_llm ===")
+                print(f"1. Создание чата: {create_chat:.2f} сек. ({create_chat/total*100:.1f}%)")
+                print(f"2. Получение ответа: {get_response:.2f} сек. ({get_response/total*100:.1f}%)")
+                print(f"3. Удаление чата: {delete_chat:.2f} сек. ({delete_chat/total*100:.1f}%)")
+                print(f"4. Общее время: {total:.2f} сек.")
+                print("==========================================\n")
+
+                return answer
+
+        except Exception as e:
+            logger.error(f"Ошибка при работе с API: {str(e)}")
+            raise
 
 
 # Функция для тестироания

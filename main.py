@@ -9,7 +9,9 @@ import asyncio
 # Основные классы из aiogram 3.x:
 # Bot - класс для взаимодействия с Telegram Bot API
 # Dispatcher - центральный класс для обработки обновлений (update)
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, BaseMiddleware
+
+from app.issue_statistics import Database
 from app.sqlite_storage import SQLiteStorage
 from pathlib import Path
 
@@ -24,6 +26,7 @@ from dotenv import load_dotenv
 # Импорт роутера из вашего приложения
 # Содержит обработчики сообщений и команд для бота
 from app.handlers import router
+from app.valueai_client import ValueAIClient
 from config import FSM_DB_PATH
 
 # Реализация хранилища состояний FSM (Finite State Machine)
@@ -39,9 +42,25 @@ from config import FSM_DB_PATH
 load_dotenv()  # Функция load_dotenv() из библиотеки python-dotenv загружает переменные окружения
 # из файла .env в текущее окружение Python
 
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+
+
+class AuthBotMiddleware(BaseMiddleware):
+    def __init__(self, auth_bot: Database):
+        self.auth_bot = auth_bot
+
+    async def __call__(self, handler, event, data):
+        data["auth_bot"] = self.auth_bot
+        return await handler(event, data)
+
 
 # главная функция
 async def main():
+
     # Читаем токен из переменных окружения
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
@@ -62,7 +81,12 @@ async def main():
     # принимает обновления от Telegram (сообщения, команды, колбэки), перенаправляет их в ваши обработчики (роутеры).
     # Telegram --> Bot --> Dispatcher --> Router --> Handlers
     # ????dp.update.outer_middleware(StateRecoveryMiddleware())  # Подключение миддлваря
+    auth_bot = Database(DB_USER, DB_PASSWORD, DB_NAME, DB_HOST, DB_PORT)
+    print(auth_bot.pool)
+    await auth_bot.connect()
+    print(auth_bot.pool)
 
+    dp.update.middleware(AuthBotMiddleware(auth_bot))
     dp.include_router(router)  # Подключает роутер (группу обработчиков) к диспетчеру бота
 
     # task = None  # заглушка

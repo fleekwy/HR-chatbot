@@ -1,6 +1,25 @@
 # Основные компоненты aiogram:
 # F (фильтры) - для создания гибких условий в обработчиках (например, F.text == "Start"
 # Router - основной инструмент для организации обработчиков сообщений (альтернатива Dispatcher в aiogram 3.x)
+import asyncio
+import logging
+
+# Настройки окружения
+import os  # доступ к переменным окружения (os.getenv("TOKEN"))
+from dotenv import load_dotenv  # загрузка переменных из .env-файла (для безопасного хранения токенов)
+
+# Кастомные модули
+import app.keyboards as kb  # Локальный модуль с клавиатурами
+# from app.storage import SQLiteStorage
+# from app.storage import user_storage, UserData  # user_storage - ваше хранилище данных пользователей
+# UserData - класс для хранения данных пользователя
+from app.valueai_client import ValueAIClient  # Кастомный клиент для работы с внешним API
+from app.auth_valueai import AuthValuai  # Модуль для управления аутентификацией (получение/обновление auth-token)
+# from app.auth_bot import AuthBot
+from config import FSM_DB_PATH
+from app.sqlite_storage import SQLiteStorage
+from app.email_key import send_key_to_email
+
 from aiogram import F, Router
 from aiogram.fsm.storage.base import StorageKey
 # Message - класс для работы с текстовыми/медиа-сообщениями
@@ -14,6 +33,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.fsm.state import State, StatesGroup
 # FSMContext - управление состоянием пользователя (установка/получение данных)
 from aiogram.fsm.context import FSMContext
+from app.issue_statistics import Database
 
 # Работа с датой/временем
 # datetime - для работы с датами и временем (например, фиксация времени авторизации)
@@ -23,24 +43,20 @@ from datetime import datetime
 import secrets
 import string
 
-# Для логирования ошибок
-import logger
+# Настройка базовой конфигурации логирования для всего приложения:
+# - level=logging.INFO - устанавливает уровень логирования (INFO и выше)
+# - По умолчанию выводит сообщения в консоль с форматом: "LEVEL:logger_name:message"
+# - Другие доступные уровни: DEBUG, WARNING, ERROR, CRITICAL
+logging.basicConfig(level=logging.INFO)
 
-# Настройки окружения
-import os  # доступ к переменным окружения (os.getenv("TOKEN"))
-from dotenv import load_dotenv  # загрузка переменных из .env-файла (для безопасного хранения токенов)
+# Создание объекта логгера для текущего модуля:
+# - __name__ автоматически подставляет имя текущего модуля (например "app.auth_manager")
+# - Позволяет идентифицировать источник лог-сообщений
+# - Лучше использовать чем logging напрямую, так как:
+#   1. Позволяет индивидуально настраивать логгеры для разных модулей
+#   2. Поддерживает иерархию логгеров через точку в имени (например "app" и "app.auth")
+logger = logging.getLogger(__name__)
 
-# Кастомные модули
-import app.keyboards as kb  # Локальный модуль с клавиатурами
-# from app.storage import SQLiteStorage
-# from app.storage import user_storage, UserData  # user_storage - ваше хранилище данных пользователей
-# UserData - класс для хранения данных пользователя
-from app.valueai_client import ValueAIClient  # Кастомный клиент для работы с внешним API
-from app.auth_valueai import AuthValuai  # Модуль для управления аутентификацией (получение/обновление auth-token)
-from app.auth_bot import AuthBot
-from config import FSM_DB_PATH
-from app.sqlite_storage import SQLiteStorage
-from app.email_key import send_key_to_email
 
 router = Router()  # Создаем экземпляр роутера
 load_dotenv('.env')  # Загружаем переменные окружения из файла .env
@@ -49,15 +65,14 @@ load_dotenv('.env')  # Загружаем переменные окружени�
 VALUEAI_LOGIN = os.getenv("VALUEAI_LOGIN")  # Логин для аутентификации в ValueAI
 VALUEAI_PASSWORD = os.getenv("VALUEAI_PASSWORD")  # Пароль для аутентификации в ValueAI
 
+
 ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS").split(",")))
 
 # Создаем менеджер аутентификации, передавая ему полученные учетные данные
 auth_manager = AuthValuai(VALUEAI_LOGIN, VALUEAI_PASSWORD)
-auth_bot = AuthBot()
 
 # Инициализируем клиент для работы с API ValueAI, передавая ему менеджер аутентификации
 valueai_client = ValueAIClient(auth_manager)
-
 
 # Фильтр, проверяющий, что пользователь — админ
 # router.message.filter(F.from_user.id.in_(ADMIN_IDS))
@@ -66,6 +81,7 @@ valueai_client = ValueAIClient(auth_manager)
 
 # Устанавливаем кастомные состояния
 class UserStates(StatesGroup):
+    start = State()
     login = State()  # Ввод логина
     password = State()  # Ввод пароля
     auth_confirmed = State()  # Успешная авторизация
@@ -83,12 +99,13 @@ class AdminStates(StatesGroup):
 # Обработчик команды /start
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
+    await state.set_state(UserStates.start)
     await message.answer(
         "Добро пожаловать в HR-чатбот! Перед началом работы необходимо пройти авторизацию",
         reply_markup=kb.start_kb
     )
     print(f'id = {message.from_user.id}')
-    await state.set_state(UserStates.login)  # Сразу устанавливаем состояние UserStates.login и запускаем авторизацию
+    # await state.set_state(UserStates.login)  # Сразу устанавливаем состояние UserStates.login и запускаем авторизацию
 
 
 @router.callback_query(F.data == "sign_in_user")
@@ -160,7 +177,7 @@ async def start_removing_user(callback: CallbackQuery, state: FSMContext):
 
 # 5. Обработчики состояний админа (в порядке важности)
 @router.message(AdminStates.waiting_for_new_user)
-async def handle_admin_add_user(message: Message, state: FSMContext):
+async def handle_admin_add_user(message: Message, state: FSMContext, auth_bot: Database):
     # Если админ начал вводить логин
     new_user_login = message.text.strip()
     if not new_user_login.endswith("@waveaccess.global"):
@@ -168,7 +185,7 @@ async def handle_admin_add_user(message: Message, state: FSMContext):
         return  # Выходим из функции, не меняя состояние -> снова запускается обработчик данного состояния
 
     try:
-        auth_bot.register_user(new_user_login)
+        await auth_bot.add_login(new_user_login)
         await message.answer(f"✅ Пользователь \"{new_user_login}\" успешно добавлен!")
     except Exception as e:
         print(f'Error: {e}')
@@ -178,11 +195,11 @@ async def handle_admin_add_user(message: Message, state: FSMContext):
 
 
 @router.message(AdminStates.waiting_for_user_to_remove)
-async def process_user_removal(message: Message, state: FSMContext):
+async def process_user_removal(message: Message, state: FSMContext, auth_bot: Database):
     login = message.text.strip()
 
     # Пытаемся удалить пользователя из БД доступа
-    remove_data = auth_bot.remove_user(login)  # Эта функция возвращает список tg id для блокировки
+    remove_data = await auth_bot.delete_login_with_tg_ids(login)  # Эта функция возвращает список tg id для блокировки
 
     try:
         for _id in remove_data:
@@ -207,28 +224,39 @@ async def process_user_removal(message: Message, state: FSMContext):
 
 
 @router.message(AdminStates.login)
-async def process_login(message: Message, state: FSMContext):
-    if (not message.text.endswith("@waveaccess.global") or not auth_bot.user_exists(message.text) or
-            not auth_bot.is_admin(message.text)):
+async def process_login(message: Message, state: FSMContext, auth_bot: Database):
+    if not message.text.endswith("@waveaccess.global") or not await auth_bot.login_exists(message.text):
         # Если проверка не пройдена - отправляем сообщение об ошибке
-        await message.answer("Некорректный (должен быть в формате name@waveaccess.global) или неверный "
-                             "(у вас нет допуска) логин!")
+        await message.answer("Некорректный (должен быть в формате name@waveaccess.global) или несуществующий логин! "
+                             "Попробуйте ещё раз или обратитесь к администратору")
         return  # Выходим из функции, не меняя состояние -> снова запускается обработчик данного состояния
+    elif not await auth_bot.is_user_admin(message.text, message.from_user.id):
+        await message.answer("У вас нет допуска! Попробуйте ещё раз или обратитесь к администратору")
+        await state.update_data(is_admin="false")
+        return
     await message.answer("Вы успешно вошли как админ!")
     await state.update_data(is_admin="true")
     await state.set_state(AdminStates.admin)
+
+
+@router.message(UserStates.start)
+async def process_start(message: Message):
+    answer_message = await message.answer("Авторизуйтесь!")
+    await asyncio.sleep(1)
+    await answer_message.delete()
+    await message.delete()
 
 
 # 6. Обработчики состояний пользователей (в порядке workflow)
 # Обработчик состояния UserStates.login
 # Срабатывает, когда пользователь находится в состоянии "ввода логина"
 @router.message(UserStates.login)
-async def process_login(message: Message, state: FSMContext):
+async def process_login(message: Message, state: FSMContext, auth_bot: Database):
     # Ниже вставим поиск данного логина (если корректно ввели) в БД доступа
     # Проверяем, что логин заканчивается на "@waveaccess.global" и вообще существует ли
-    if not message.text.endswith("@waveaccess.global") or not auth_bot.user_exists(message.text):
+    if not message.text.endswith("@waveaccess.global") or not await auth_bot.login_exists(message.text):
         # Если проверка не пройдена - отправляем сообщение об ошибке
-        await message.answer("Некорректный (должен быть в формате name@waveaccess.global) или неверный логин!")
+        await message.answer("Некорректный (должен быть в формате name@waveaccess.global) или несуществующий логин!")
         return  # Выходим из функции, не меняя состояние -> снова запускается обработчик данного состояния
 
     # Сохраняем введенный логин в хранилище FSM
@@ -258,7 +286,7 @@ async def process_login(message: Message, state: FSMContext):
 # Обработчик состояния ввода пароля (UserStates.password)
 # Срабатывает только когда пользователь в состоянии "ввода пароля"
 @router.message(UserStates.password)
-async def process_password(message: Message, state: FSMContext):
+async def process_password(message: Message, state: FSMContext, auth_bot: Database):
     user_data = await state.get_data()
     print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
     print(f"Данные получены: {user_data}")  # ← Отладка
@@ -281,7 +309,7 @@ async def process_password(message: Message, state: FSMContext):
     # user_storage[message.from_user.id] = user_data  # сохраняем
 
     print(message.from_user.id)
-    auth_bot.add_session(user_login, message.from_user.id)
+    await auth_bot.add_session(message.from_user.id, user_login)
 
     # Отправка сообщения об успешной авторизации
     await message.answer("Вы успешно авторизованы! Можете задавать вопросы!")
@@ -290,65 +318,123 @@ async def process_password(message: Message, state: FSMContext):
     await state.set_state(UserStates.auth_confirmed)
 
 
-async def add_stat(question: str, answer: str, processing_time: float):
-    print(f'question = {question}')
-    print(f'answer = {answer}')
-    print(f'processing_time = {processing_time}')
-    pass
+async def ask_llm(message: Message, auth_bot: Database):
+    # Инициализация таймеров
+    timers = {
+        'total_start': datetime.now(),
+        'thinking_msg': None,
+        'llm_request': None,
+        'response_processing': None,
+        'cleanup': None,
+        'final_response': None,
+        'sending_response': None,
+        'statistics': None
+    }
 
-
-async def ask_llm(message: Message):
     # 1. Отправляем сообщение "Обработка запроса..."
     thinking_msg = await message.answer("Обработка запроса...")
-    # start_time = time.time()  # Засекаем время начала обработки
-    start_time = datetime.now()
+    timers['thinking_msg'] = datetime.now()
 
+    kod = 0
     try:
         # 2. Отправляем запрос к ИИ-ассистенту
+        timers['llm_request_start'] = datetime.now()
         response = await valueai_client.send_message_to_llm(message.text)
+        print(response)
+        timers['llm_request_end'] = datetime.now()
 
-        # 3. Очищаем ответ от технической информации (все после ******)
+        # 3. Очищаем ответ от технической информации
+        timers['response_processing_start'] = datetime.now()
         response = response.split('**********', 1)[0].strip()
+
+        if response.startswith("Код ответа — 200"):
+            kod = 200
+            response = response.replace("Код ответа — 200", "").strip()
+        else:
+            kod = 100
+            response = response.replace("Код ответа — 100", "").strip()
+        timers['response_processing_end'] = datetime.now()
+
+        print(f'код ответа = {kod}')
 
         # 4. Проверяем, что ответ не пустой
         if not response:
-            raise ValueError("Пустой ответ от ИИ")
+            logger.info("Пустой ответ от ИИ")
+            response = (
+                "Извините, не удалось обработать ваш запрос. "
+                "Попробуйте переформулировать вопрос или обратитесь позже"
+            )
 
     except Exception as e:
-        # 5. Логируем ошибку для дальнейшего анализа
-        logger.error(f"Ошибка обработки сообщения: {e}", message)
+        # 5. Логируем ошибку
+        logger.error(f"Ошибка обработки сообщения: {e}")
 
         # 6. Формируем запасной вариант ответа
         response = (
             "Извините, не удалось обработать ваш запрос. "
-            "Попробуйте переформулировать вопрос или обратитесь позже."
+            "Попробуйте переформулировать вопрос или обратитесь позже"
         )
 
     # 7. Удаляем сообщение "Обработка запроса..."
+    timers['cleanup_start'] = datetime.now()
     await thinking_msg.delete()
+    timers['cleanup_end'] = datetime.now()
 
-    end_time = datetime.now()
-    # 8. Рассчитываем время выполнения
-    # processing_time = round(time.time() - start_time, 2)
-    processing_time = round((end_time - start_time).total_seconds(), 2)
-
-    # 9. Формируем финальное сообщение с временем обработки
+    # 8. Формируем финальное сообщение
+    timers['final_response_start'] = datetime.now()
+    processing_time = round((datetime.now() - timers['total_start']).total_seconds(), 2)
     final_response = (
         f"{response}\n\n"
         f"⏱ Время обработки: {processing_time} сек."
     )
+    timers['final_response_end'] = datetime.now()
 
-    # 10. Отправляем ответ пользователю
+    # 9. Отправляем ответ пользователю
+    timers['sending_response_start'] = datetime.now()
     await message.answer(text=final_response)
+    timers['sending_response_end'] = datetime.now()
 
-    await add_stat(message.text, response, processing_time)
+    # 10. Рассчитываем время выполнения
+    timers['total_end'] = datetime.now()
+
+    # Вычисляем временные интервалы
+    total_time = round((timers['total_end'] - timers['total_start']).total_seconds(), 2)
+    llm_request_time = round((timers['llm_request_end'] - timers['llm_request_start']).total_seconds(), 2)
+    response_processing_time = round(
+        (timers['response_processing_end'] - timers['response_processing_start']).total_seconds(), 2)
+    cleanup_time = round((timers['cleanup_end'] - timers['cleanup_start']).total_seconds(), 2)
+    final_response_time = round((timers['final_response_end'] - timers['final_response_start']).total_seconds(), 2)
+    sending_response_time = round((timers['sending_response_end'] - timers['sending_response_start']).total_seconds(),
+                                  2)
+
+    # Логируем временные метки
+    print("\n=== Профилирование времени выполнения ===")
+    print(f"1. Отправка thinking сообщения:"
+          f" {round((timers['thinking_msg'] - timers['total_start']).total_seconds(), 2)} сек.")
+    print(f"2. Запрос к LLM: {llm_request_time} сек. ({llm_request_time / total_time * 100:.1f}%)")
+    print(f"3. Обработка ответа: {response_processing_time} сек.")
+    print(f"4. Удаление thinking сообщения: {cleanup_time} сек.")
+    print(f"5. Формирование финального ответа: {final_response_time} сек.")
+    print(f"6. Отправка ответа пользователю: {sending_response_time} сек.")
+    print(f"7. Общее время выполнения: {total_time} сек.")
+    print("=====================================")
+
+    # Запись статистики
+    timers['statistics_start'] = datetime.now()
+    if kod == 200:
+        await auth_bot.save_statistics(message.text, response, processing_time)
+
+    timers['statistics_end'] = datetime.now()
+
+    statistics_time = round((timers['statistics_end'] - timers['statistics_start']).total_seconds(), 2)
+    print(f"8. Запись статистики: {statistics_time} сек.")
 
     await message.answer("Что вас ещё интересует?)")
 
 
-@router.message(AdminStates.admin, F.from_user.id.in_(ADMIN_IDS))
-async def handle_admin_question(message: Message):
-    await ask_llm(message)
+@router.message(AdminStates.admin)
+async def handle_admin_question(message: Message, auth_bot: Database):
+    await ask_llm(message, auth_bot)
 
 
 # 7. Обработчик для заблокированных пользователей (NEW!)
@@ -360,8 +446,9 @@ async def handle_banned_user(message: Message):
 
 
 @router.message(UserStates.auth_confirmed)
-async def handle_user_question(message: Message):
-    await ask_llm(message)
+async def handle_user_question(message: Message, auth_bot: Database):
+    await ask_llm(message, auth_bot)
+
 
 # # 1. Стартовые команды (без состояний)
 # @router.message(CommandStart())

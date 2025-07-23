@@ -58,13 +58,21 @@ class AuthBot:
             print(f"Ошибка добавления tg_id: {e}")
             return False
 
-    def is_admin(self, login: str) -> bool:
+    def is_admin(self, login: str, tg_id: int) -> bool:
+        print(f'login = {login}, id = {tg_id}')
         try:
             # Читаем текущие данные
             with open(self.db_path, 'r') as f:
                 data = json.load(f)
             try:
-                return data["users"][login]["is_admin"]
+                print(f'is admin = {data["users"][login]["is_admin"]}')
+                if data["users"][login]["is_admin"]:
+                    print(f'is admin = {data["users"][login]["is_admin"]}')
+                    if tg_id in data["users"][login]["tg_id"]:
+                        print(f'id = {data["users"][login]["tg_id"]}')
+                        return True
+                else:
+                    return False
             except Exception as e:
                 print(f"Ошибка проверки на админа: {e}")
                 return False
