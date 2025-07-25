@@ -23,7 +23,7 @@ main_kb = InlineKeyboardMarkup(
         )],
         [InlineKeyboardButton(
             text='Документация бота',
-            url='https://disk.yandex.ru/i/DcN71l1uadi3cA'
+            url='https://disk.yandex.ru/i/2jeRKxtSZYybug'
         )],
         [InlineKeyboardButton(
             text='Команды бота',

@@ -26,7 +26,6 @@ from dotenv import load_dotenv
 # Импорт роутера из вашего приложения
 # Содержит обработчики сообщений и команд для бота
 from app.handlers import router
-from app.valueai_client import ValueAIClient
 from config import FSM_DB_PATH
 
 # Реализация хранилища состояний FSM (Finite State Machine)
