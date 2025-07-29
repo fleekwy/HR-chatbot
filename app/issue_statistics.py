@@ -1,20 +1,4 @@
 import asyncpg
-import logging
-
-
-# Настройка базовой конфигурации логирования для всего приложения:
-# - level=logging.INFO - устанавливает уровень логирования (INFO и выше)
-# - По умолчанию выводит сообщения в консоль с форматом: "LEVEL:logger_name:message"
-# - Другие доступные уровни: DEBUG, WARNING, ERROR, CRITICAL
-logging.basicConfig(level=logging.INFO)
-
-# Создание объекта логгера для текущего модуля:
-# - __name__ автоматически подставляет имя текущего модуля (например "app.auth_manager")
-# - Позволяет идентифицировать источник лог-сообщений
-# - Лучше использовать чем logging напрямую, так как:
-#   1. Позволяет индивидуально настраивать логгеры для разных модулей
-#   2. Поддерживает иерархию логгеров через точку в имени (например "app" и "app.auth")
-logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -29,7 +13,6 @@ class Database:
     async def close(self):
         if self.pool:
             await self.pool.close()
-            logger.info("PostgreSQL connection pool closed")
 
     async def connect(self):
         self.pool = await asyncpg.create_pool(
@@ -123,7 +106,7 @@ class Database:
                 return result['is_admin']
             return None  # Логин или tg_id не найдены или не связаны
 
-    # ✅ Функция добавления записи в sessions
+    # Функция добавления записи в sessions
     async def add_session(self, tg_id: int, login: str):
         async with self.pool.acquire() as connection:
             await connection.execute(
@@ -135,7 +118,7 @@ class Database:
                 tg_id, login
             )
 
-    # ❌ Функция удаления записи по tg_id
+    # Функция удаления записи по tg_id
     async def remove_session(self, tg_id: int):
         async with self.pool.acquire() as connection:
             await connection.execute(
@@ -145,35 +128,3 @@ class Database:
                 """,
                 tg_id
             )
-
-    # обработка ститистики, когда она накопилась опр количества или когда её запросят админы
-
-    # при удалении нужно забрать эти гт айди,
-    #
-    #
-    #
-    #
-
-
-# await db.add_login("user@example.com")
-# await db.remove_login("user@example.com")
-# await db.set_admin_status("user@example.com", True)   # Повышение до администратора
-
-
-async def test():
-    db = Database('postgres', '123', 'postgres', 'localhost', 5431)
-
-    try:
-        await db.connect()
-        await db.add_login('use3r@example.com')
-        await db.delete_login_with_tg_ids('used@example.com')
-        await db.set_admin_status('user@example.com', False)
-        print("✅ Всё сработало")
-    except Exception as e:
-        print("❌ Ошибка:", e)
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(test())

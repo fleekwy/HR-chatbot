@@ -28,21 +28,14 @@ from typing import Dict
 # - Удобные методы для манипуляции путями
 from pathlib import Path
 
-# Определение пути к файлу .env относительно расположения текущего скрипта:
-# 1. Path(__file__) - создает Path-объект из абсолютного пути текущего файла .py
-# 2. .resolve() - преобразует путь в абсолютный (разрешает симлинки и относительные пути)
-# 3. .parent - получает родительскую директорию (переход на уровень выше)
-#    Первый .parent - директория, где лежит текущий файл
-#    Второй .parent - поднимаемся ещё на уровень выше (корень проекта)
-# 4. / ".env" - добавляет имя файла к пути (конкатенация через оператор /)
+# Определение пути к файлу .env относительно расположения текущего скрипта
 env_path = Path(__file__).resolve().parent.parent / ".env"
 
-# Загрузка переменных окружения из указанного файла:
-# 1. Ищет файл по указанному пути (env_path)
-# 2. Если файл существует, загружает все переменные в os.environ
-# 3. Если файла нет - молча продолжает работу (не вызывает ошибку)
-# 4. Переменные становятся доступны через os.getenv()
+# Загрузка переменных окружения из указанного файла
 load_dotenv(env_path)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # Определение класса, который содержит логику аутентификации на ValueAI и работы с токенами
@@ -126,7 +119,6 @@ class AuthValuai:
     # Метод для получения новых токенов по логину/паролю
     async def get_new_tokens(self) -> Dict[str, str]:
         # Отладочное сообщение
-        print('ВЫПОЛНЕНИЕ ФУНКЦИИ GET_NEW_TOKENS')
 
         # Формируем тело запроса
         payload = {
@@ -141,7 +133,7 @@ class AuthValuai:
             # Отправляем POST-запрос
             async with session.post(get_new_url, json=payload) as response:
                 # Выводим статус ответа для отладки
-                print(f'response.status = {response.status}')
+                logger.debug(f'response.status = {response.status}')
 
                 # Обрабатываем возможные статусы ответа
                 if response.status == 400:
@@ -161,14 +153,9 @@ class AuthValuai:
     # Метод для обновления токенов с помощью refresh_token
     async def refresh_tokens(self, refresh_token: str) -> Dict[str, str]:
         # Отладочное сообщение
-        print('ВЫПОЛНЕНИЕ ФУНКЦИИ REFRESH_TOKENS')
 
         # Формируем URL для обновления токенов
         refresh_url = f"{self.base_auth_url}token/refresh"
-        # Отладочный вывод URL
-        print(f'refresh_url = {refresh_url}')
-        # Отладочный вывод refresh_token (в реальном коде лучше не выводить)
-        print(f'refresh_token = {refresh_token}')
 
         # Формируем заголовки с текущим refresh_token
         headers = {
@@ -195,15 +182,10 @@ class AuthValuai:
     # Основной метод для получения валидного токена
     async def get_valid_token(self) -> str:
         # Отладочное сообщение
-        print('ВЫПОЛНЕНИЕ ФУНКЦИИ GET_VALID_TOKENS')
 
         # Получаем текущие токены из переменных окружения
         access_token = os.getenv("VALUEAI_ACCESS_TOKEN")
         refresh_token = os.getenv("VALUEAI_REFRESH_TOKEN")
-
-        # Отладочный вывод текущих токенов
-        print(f"auth_token = {access_token}")
-        print(f'refresh_token = {refresh_token}')
 
         # Если токены отсутствуют - получаем новые
         if not access_token or not refresh_token:
@@ -212,48 +194,15 @@ class AuthValuai:
 
         # Пробуем обновить токены
         try:
-            print('Пытаюсь освежить')
             new_tokens = await self.refresh_tokens(refresh_token)
             return new_tokens["authorization_token"]
         except (aiohttp.ClientError, KeyError) as e:
             # В случае ошибки - получаем новые токены
-            print('Не получилось освежить')
             # Логируем ошибку
-            logging.error(f"Ошибка: {e}", exc_info=True)  # Параметр exc_info=True в методе logging.error()
+            logging.error(f"Ошибка освежения токена: {e}", exc_info=True)
+            # Параметр exc_info=True в методе logging.error()
             # включает запись полной информации об исключении (exception traceback) в лог
 
             # Получаем новые токены
             tokens = await self.get_new_tokens()
             return tokens["authorization_token"]
-
-
-# async def test():
-#
-#     print(os.getenv("VALUEAI_LOGIN"))
-#     print(os.getenv("VALUEAI_PASSWORD"))
-#
-#     # Проверка работы AuthManager
-#     auth_manager = AuthManager(
-#        login=os.getenv("VALUEAI_LOGIN"),
-#        password=os.getenv("VALUEAI_PASSWORD")
-#     )
-#
-#     print(f'auth_manager.login = {auth_manager.login}, auth_manager.password = {auth_manager.password}')
-#
-#     print("1. Получение новых токенов...")
-#     new_tokens = await auth_manager.get_new_tokens()
-#     print("Новые токены:", new_tokens)
-#
-#     print("\n2. Получение валидного токена...")
-#     valid_token = await auth_manager.get_valid_token()
-#     print("Валидный токен:", valid_token)
-#
-#     print("\n3. Обновление токенов...")
-#     refreshed_tokens = await auth_manager.refresh_tokens('new_tokens["refresh_token"]')
-#     print("Обновленные токены:", refreshed_tokens)
-#
-#
-# if __name__ == "__main__":
-#     import asyncio
-#
-#     asyncio.run(test())

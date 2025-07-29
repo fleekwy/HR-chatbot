@@ -10,53 +10,37 @@ from dotenv import load_dotenv  # загрузка переменных из .en
 
 # Кастомные модули
 import app.keyboards as kb  # Локальный модуль с клавиатурами
-# from app.storage import SQLiteStorage
-# from app.storage import user_storage, UserData  # user_storage - ваше хранилище данных пользователей
-# UserData - класс для хранения данных пользователя
 from app.valueai_client import ValueAIClient  # Кастомный клиент для работы с внешним API
 from app.auth_valueai import AuthValuai  # Модуль для управления аутентификацией (получение/обновление auth-token)
-# from app.auth_bot import AuthBot
 from config import FSM_DB_PATH
 from app.sqlite_storage import SQLiteStorage
 from app.email_key import send_key_to_email
 
 from aiogram import F, Router
 from aiogram.fsm.storage.base import StorageKey
+
 # Message - класс для работы с текстовыми/медиа-сообщениями
 # CallbackQuery - обработка нажатий на инлайн-кнопки
 from aiogram.types import Message, CallbackQuery
+
 # CommandStart - фильтр для команды /start
 # Command - фильтр для любых команд (например, Command("help"))
 from aiogram.filters import CommandStart, Command
-# CommandStart - фильтр для команды /start
-# Command - фильтр для любых команд (например, Command("help"))
+
 from aiogram.fsm.state import State, StatesGroup
+
 # FSMContext - управление состоянием пользователя (установка/получение данных)
 from aiogram.fsm.context import FSMContext
 from app.issue_statistics import Database
 
 # Работа с датой/временем
-# datetime - для работы с датами и временем (например, фиксация времени авторизации)
-# from datetime import datetime
-# import time
 from datetime import datetime
+
 import secrets
 import string
 
-# Настройка базовой конфигурации логирования для всего приложения:
-# - level=logging.INFO - устанавливает уровень логирования (INFO и выше)
-# - По умолчанию выводит сообщения в консоль с форматом: "LEVEL:logger_name:message"
-# - Другие доступные уровни: DEBUG, WARNING, ERROR, CRITICAL
 logging.basicConfig(level=logging.INFO)
-
-# Создание объекта логгера для текущего модуля:
-# - __name__ автоматически подставляет имя текущего модуля (например "app.auth_manager")
-# - Позволяет идентифицировать источник лог-сообщений
-# - Лучше использовать чем logging напрямую, так как:
-#   1. Позволяет индивидуально настраивать логгеры для разных модулей
-#   2. Поддерживает иерархию логгеров через точку в имени (например "app" и "app.auth")
 logger = logging.getLogger(__name__)
-
 
 router = Router()  # Создаем экземпляр роутера
 load_dotenv('.env')  # Загружаем переменные окружения из файла .env
@@ -65,7 +49,6 @@ load_dotenv('.env')  # Загружаем переменные окружени�
 VALUEAI_LOGIN = os.getenv("VALUEAI_LOGIN")  # Логин для аутентификации в ValueAI
 VALUEAI_PASSWORD = os.getenv("VALUEAI_PASSWORD")  # Пароль для аутентификации в ValueAI
 
-
 ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS").split(",")))
 
 # Создаем менеджер аутентификации, передавая ему полученные учетные данные
@@ -73,10 +56,6 @@ auth_manager = AuthValuai(VALUEAI_LOGIN, VALUEAI_PASSWORD)
 
 # Инициализируем клиент для работы с API ValueAI, передавая ему менеджер аутентификации
 valueai_client = ValueAIClient(auth_manager)
-
-# Фильтр, проверяющий, что пользователь — админ
-# router.message.filter(F.from_user.id.in_(ADMIN_IDS))
-# router.callback_query.filter(F.from_user.id.in_(ADMIN_IDS))
 
 
 # Устанавливаем кастомные состояния
@@ -96,6 +75,7 @@ class AdminStates(StatesGroup):
     waiting_for_user_to_remove = State()
 
 
+# 1. Стартовые команды:
 # Обработчик команды /start
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
@@ -105,37 +85,8 @@ async def cmd_start(message: Message, state: FSMContext):
         "Добро пожаловать в HR-чатбот! Перед началом работы необходимо пройти авторизацию",
         reply_markup=kb.start_kb
     )
-    # print(f'id = {message.from_user.id}')
-    # await state.set_state(UserStates.login)  # Сразу устанавливаем состояние UserStates.login и запускаем авторизацию
 
 
-@router.callback_query(F.data == "sign_in_user")
-async def sign_in_user(callback: CallbackQuery, state: FSMContext):
-    try:
-        # Удаляем само сообщение с клавиатурой
-        await callback.message.delete()
-    except Exception as e:
-        # Если сообщение уже удалено или нет прав на удаление
-        print(f"Ошибка при удалении сообщения: {e}")
-    await callback.answer()
-    await callback.message.answer("Пожалуйста, введите ваш логин в формате name@waveaccess.global")
-    await state.set_state(UserStates.login)
-
-
-@router.callback_query(F.data == "sign_in_admin")
-async def sign_in_admin(callback: CallbackQuery, state: FSMContext):
-    try:
-        # Удаляем само сообщение с клавиатурой
-        await callback.message.delete()
-    except Exception as e:
-        # Если сообщение уже удалено или нет прав на удаление
-        print(f"Ошибка при удалении сообщения: {e}")
-    await callback.answer()
-    await callback.message.answer("Пожалуйста, введите ваш логин в формате name@waveaccess.global")
-    await state.set_state(AdminStates.login)
-
-
-# 1. Стартовые команды (без состояний)
 # Обработчик команды /menu
 @router.message(Command("menu"))
 async def cmd_help(message: Message):
@@ -147,7 +98,19 @@ async def cmd_help(message: Message):
     await message.delete()
 
 
-# 2. Общие callback-запросы (без состояний)
+# Обработчик команды /admin
+@router.message(Command("admin"))
+async def admin_panel(message: Message, state: FSMContext):
+    await asyncio.sleep(1)
+    await message.delete()
+    data = await state.get_data()
+    if data.get('is_admin') == "true":
+        await message.answer("Панель админа:", reply_markup=kb.get_admin_kb())
+    else:
+        await message.answer("Недостаточно прав!")
+
+
+# 2. Основные callback-запросы:
 # Обработчик нажатия на кнопку с callback_data "about_us"
 @router.callback_query(F.data == "komands")
 async def about_us(callback: CallbackQuery):
@@ -163,7 +126,7 @@ async def close_commands_handler(callback: CallbackQuery):
         await callback.message.delete()
     except Exception as e:
         # Если сообщение уже удалено или нет прав на удаление
-        print(f"Ошибка при удалении сообщения: {e}")
+        logger.error(f"Ошибка при удалении сообщения: {e}")
 
     # Подтверждаем обработку callback (убираем "часики" на кнопке)
     await callback.answer("Клавиатура скрыта")
@@ -176,7 +139,7 @@ async def close_commands_handler(callback: CallbackQuery):
         await callback.message.delete()
     except Exception as e:
         # Если сообщение уже удалено или нет прав на удаление
-        print(f"Ошибка при удалении сообщения: {e}")
+        logger.error(f"Ошибка при удалении сообщения: {e}")
 
     # Подтверждаем обработку callback (убираем "часики" на кнопке)
     await callback.answer("Клавиатура скрыта")
@@ -191,20 +154,105 @@ async def close_commands_handler(callback: CallbackQuery):
     await callback.answer()
 
 
-# 3. Админские команды (без состояний, с проверкой прав)
-# Обработчик команды /admin
-@router.message(Command("admin"))
-async def admin_panel(message: Message, state: FSMContext):
-    await asyncio.sleep(1)
-    await message.delete()
-    data = await state.get_data()
-    if data.get('is_admin') == "true":
-        await message.answer("Панель админа:", reply_markup=kb.get_admin_kb())
-    else:
-        await message.answer("Недостаточно прав!")
+# 3. Авторизация пользователей:
+@router.callback_query(F.data == "sign_in_user")
+async def sign_in_user(callback: CallbackQuery, state: FSMContext):
+    try:
+        # Удаляем само сообщение с клавиатурой
+        await callback.message.delete()
+    except Exception as e:
+        # Если сообщение уже удалено или нет прав на удаление
+        logger.error(f"Ошибка при удалении сообщения: {e}")
+    await callback.answer()
+    await callback.message.answer("Пожалуйста, введите ваш логин в формате name@waveaccess.global")
+    await state.set_state(UserStates.login)
 
 
-# 4. Админские callback-запросы (без состояний)
+# Обработчики состояний пользователей (в порядке workflow)
+# Обработчик состояния UserStates.login
+# Срабатывает, когда пользователь находится в состоянии "ввода логина"
+@router.message(UserStates.login)
+async def process_login(message: Message, state: FSMContext, auth_bot: Database):
+    # Ниже вставим поиск данного логина (если корректно ввели) в БД доступа
+    # Проверяем, что логин заканчивается на "@waveaccess.global" и вообще существует ли
+    if not message.text.endswith("@waveaccess.global") or not await auth_bot.login_exists(message.text):
+        # Если проверка не пройдена - отправляем сообщение об ошибке
+        await message.answer("Некорректный (должен быть в формате name@waveaccess.global) или несуществующий логин!")
+        return  # Выходим из функции, не меняя состояние -> снова запускается обработчик данного состояния
+
+    # Сохраняем введенный логин в хранилище FSM
+    # Это позволит использовать его на следующем шаге (ввод пароля)
+    alphabet = string.ascii_letters + string.digits  # A-Z, a-z, 0-9
+    p_key = ''.join(secrets.choice(alphabet) for _ in range(10))
+
+    await state.update_data(login=message.text, pass_key=p_key, is_admin="false")
+
+    # Меняем состояние пользователя на UserStates.password
+    # Теперь бот будет ожидать ввод пароля
+    await state.set_state(UserStates.password)
+    # print("До get_data в password после смены состояния:", await state.get_data())
+
+    send_key_to_email(message.text, p_key)
+
+    # Отправляем пользователю сообщение с инструкцией
+    await message.answer("Отлично! Мы отправили вам на почту одноразовый 10-значный код, скопируйте и вставьте сюда")
+
+
+# Обработчик состояния ввода пароля (UserStates.password)
+# Срабатывает только когда пользователь в состоянии "ввода пароля"
+@router.message(UserStates.password)
+async def process_password(message: Message, state: FSMContext, auth_bot: Database):
+    user_data = await state.get_data()
+    # print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
+    # print(f"Данные получены: {user_data}")  # ← Отладка
+    user_login = user_data.get('login')
+    pass_key = user_data.get('pass_key')
+
+    if pass_key != message.text:
+        await message.answer("Неверный код! Попробуйте еще раз")
+        return
+
+    await auth_bot.add_session(message.from_user.id, user_login)
+
+    # Отправка сообщения об успешной авторизации
+    await message.answer("Вы успешно авторизованы! Можете задавать вопросы!")
+
+    # Меняем состояние - авторизация подтверждена
+    await state.set_state(UserStates.auth_confirmed)
+
+
+# 4. Авторизация админов:
+@router.callback_query(F.data == "sign_in_admin")
+async def sign_in_admin(callback: CallbackQuery, state: FSMContext):
+    try:
+        # Удаляем само сообщение с клавиатурой
+        await callback.message.delete()
+    except Exception as e:
+        # Если сообщение уже удалено или нет прав на удаление
+        logger.error(f"Ошибка при удалении сообщения: {e}")
+    await callback.answer()
+    await callback.message.answer("Пожалуйста, введите ваш логин в формате name@waveaccess.global")
+    await state.set_state(AdminStates.login)
+
+
+@router.message(AdminStates.login)
+async def process_login(message: Message, state: FSMContext, auth_bot: Database):
+    if not message.text.endswith("@waveaccess.global") or not await auth_bot.login_exists(message.text):
+        # Если проверка не пройдена - отправляем сообщение об ошибке
+        await message.answer("Некорректный (должен быть в формате name@waveaccess.global) или несуществующий логин! "
+                             "Попробуйте ещё раз или обратитесь к администратору")
+        return  # Выходим из функции, не меняя состояние -> снова запускается обработчик данного состояния
+    elif not await auth_bot.is_user_admin(message.text, message.from_user.id):
+        await message.answer("У вас нет допуска! Попробуйте ещё раз или обратитесь к администратору")
+        await state.update_data(is_admin="false")
+        return
+    await message.answer("Вы успешно вошли как админ!")
+    await state.update_data(is_admin="true")
+    await message.answer("Готов отвечать на ваши вопросы!")
+    await state.set_state(AdminStates.admin)
+
+
+# 5. Админские функции:
 # Нажатие кнопки "Добавить пользователя"
 @router.callback_query(F.data == "admin_add_user")
 async def start_adding_user(callback: CallbackQuery, state: FSMContext):
@@ -217,31 +265,6 @@ async def start_adding_user(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Недостаточно прав!")
 
 
-@router.callback_query(F.data == "admin_remove_user")
-async def start_removing_user(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    if data.get('is_admin') == "true":
-        await callback.message.edit_text("Введите логин пользователя для удаления:")
-        await state.set_state(AdminStates.waiting_for_user_to_remove)
-        await callback.answer()
-    else:
-        await callback.answer("Недостаточно прав!")
-
-
-@router.callback_query(F.data == "close_admin_kb")
-async def start_removing_user(callback: CallbackQuery):
-    try:
-        # Удаляем само сообщение с клавиатурой
-        await callback.message.delete()
-    except Exception as e:
-        # Если сообщение уже удалено или нет прав на удаление
-        print(f"Ошибка при удалении сообщения: {e}")
-
-    # Подтверждаем обработку callback (убираем "часики" на кнопке)
-    await callback.answer("Клавиатура скрыта")
-
-
-# 5. Обработчики состояний админа (в порядке важности)
 @router.message(AdminStates.waiting_for_new_user)
 async def handle_admin_add_user(message: Message, state: FSMContext, auth_bot: Database):
     # Если админ начал вводить логин
@@ -254,10 +277,21 @@ async def handle_admin_add_user(message: Message, state: FSMContext, auth_bot: D
         await auth_bot.add_login(new_user_login)
         await message.answer(f"✅ Пользователь \"{new_user_login}\" успешно добавлен!")
     except Exception as e:
-        print(f'Error: {e}')
+        logger.error(f'Ошибка добавления нового пользователя: {e}')
 
     await message.answer("Готов отвечать на ваши вопросы!")
     await state.set_state(AdminStates.admin)
+
+
+@router.callback_query(F.data == "admin_remove_user")
+async def start_removing_user(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if data.get('is_admin') == "true":
+        await callback.message.edit_text("Введите логин пользователя для удаления:")
+        await state.set_state(AdminStates.waiting_for_user_to_remove)
+        await callback.answer()
+    else:
+        await callback.answer("Недостаточно прав!")
 
 
 @router.message(AdminStates.waiting_for_user_to_remove)
@@ -281,6 +315,7 @@ async def process_user_removal(message: Message, state: FSMContext, auth_bot: Da
 
     except Exception as e:
         await message.answer(f"⚠ Не удалось удалить пользователя: {e}")
+        logger.error(f"⚠ Не удалось удалить пользователя: {e}")
 
     await message.answer(f"✅ Пользователь \"{login}\" удалён")
 
@@ -288,23 +323,38 @@ async def process_user_removal(message: Message, state: FSMContext, auth_bot: Da
     await state.set_state(AdminStates.admin)
 
 
-@router.message(AdminStates.login)
-async def process_login(message: Message, state: FSMContext, auth_bot: Database):
-    if not message.text.endswith("@waveaccess.global") or not await auth_bot.login_exists(message.text):
-        # Если проверка не пройдена - отправляем сообщение об ошибке
-        await message.answer("Некорректный (должен быть в формате name@waveaccess.global) или несуществующий логин! "
-                             "Попробуйте ещё раз или обратитесь к администратору")
-        return  # Выходим из функции, не меняя состояние -> снова запускается обработчик данного состояния
-    elif not await auth_bot.is_user_admin(message.text, message.from_user.id):
-        await message.answer("У вас нет допуска! Попробуйте ещё раз или обратитесь к администратору")
-        await state.update_data(is_admin="false")
-        return
-    await message.answer("Вы успешно вошли как админ!")
-    await state.update_data(is_admin="true")
-    await message.answer("Готов отвечать на ваши вопросы!")
-    await state.set_state(AdminStates.admin)
+@router.callback_query(F.data == "close_admin_kb")
+async def start_removing_user(callback: CallbackQuery):
+    try:
+        # Удаляем само сообщение с клавиатурой
+        await callback.message.delete()
+    except Exception as e:
+        # Если сообщение уже удалено или нет прав на удаление
+        logger.error(f"Ошибка при удалении сообщения: {e}")
+
+    # Подтверждаем обработку callback (убираем "часики" на кнопке)
+    await callback.answer("Клавиатура скрыта")
 
 
+# 6. Основной workflow:
+@router.message(AdminStates.admin)
+async def handle_admin_question(message: Message, auth_bot: Database):
+    await ask_llm(message, auth_bot)
+
+
+@router.message(UserStates.auth_confirmed)
+async def handle_user_question(message: Message, auth_bot: Database):
+    await ask_llm(message, auth_bot)
+
+
+@router.message(UserStates.banned)  # Или проверка состояния через БД
+async def handle_banned_user(message: Message):
+    await message.answer("❌ Ваш доступ заблокирован. Попробуйте снова авторизоваться через команду /start. Если "
+                         "не удалось - обратитесь к администратору")
+    return
+
+
+# 7. Вспомогательные состояния:
 @router.message(UserStates.start)
 async def process_start(message: Message):
     answer_message = await message.answer("Авторизуйтесь!")
@@ -313,78 +363,7 @@ async def process_start(message: Message):
     await message.delete()
 
 
-# 6. Обработчики состояний пользователей (в порядке workflow)
-# Обработчик состояния UserStates.login
-# Срабатывает, когда пользователь находится в состоянии "ввода логина"
-@router.message(UserStates.login)
-async def process_login(message: Message, state: FSMContext, auth_bot: Database):
-    # Ниже вставим поиск данного логина (если корректно ввели) в БД доступа
-    # Проверяем, что логин заканчивается на "@waveaccess.global" и вообще существует ли
-    if not message.text.endswith("@waveaccess.global") or not await auth_bot.login_exists(message.text):
-        # Если проверка не пройдена - отправляем сообщение об ошибке
-        await message.answer("Некорректный (должен быть в формате name@waveaccess.global) или несуществующий логин!")
-        return  # Выходим из функции, не меняя состояние -> снова запускается обработчик данного состояния
-
-    # Сохраняем введенный логин в хранилище FSM
-    # Это позволит использовать его на следующем шаге (ввод пароля)
-    alphabet = string.ascii_letters + string.digits  # A-Z, a-z, 0-9
-    p_key = ''.join(secrets.choice(alphabet) for _ in range(10))
-
-    await state.update_data(login=message.text, pass_key=p_key, is_admin="false")
-    # print("Данные сохранены:", data)
-    # stored = await state.get_data()
-    # print("get_data сразу после обновления:", stored)
-    # state_data = await storage.debug_state(StorageKey(chat_id=message.chat.id, user_id=message.from_user.id))
-    # print(f"Состояние в БД: {state_data}")
-    # print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
-
-    # Меняем состояние пользователя на UserStates.password
-    # Теперь бот будет ожидать ввод пароля
-    await state.set_state(UserStates.password)
-    # print("До get_data в password после смены состояния:", await state.get_data())
-
-    send_key_to_email(message.text, p_key)
-    print(p_key)
-
-    # Отправляем пользователю сообщение с инструкцией
-    await message.answer("Отлично! Мы отправили вам на почту одноразовый 10-значный код, скопируйте и вставьте сюда")
-
-
-# Обработчик состояния ввода пароля (UserStates.password)
-# Срабатывает только когда пользователь в состоянии "ввода пароля"
-@router.message(UserStates.password)
-async def process_password(message: Message, state: FSMContext, auth_bot: Database):
-    user_data = await state.get_data()
-    # print(f"Ключ состояния: chat_id={message.chat.id}, user_id={message.from_user.id}, bot_id = {message.bot.id}")
-    # print(f"Данные получены: {user_data}")  # ← Отладка
-    user_login = user_data.get('login')
-    pass_key = user_data.get('pass_key')
-
-    if pass_key != message.text:
-        await message.answer("Неверный код! Попробуйте еще раз")
-        return
-
-    # ЗАКОММЕНТИРОВАННОЕ НИЖЕ ОСТАЛОСЬ ОТ ПРЕЖНЕЙ РЕАЛИЗАЦИИ СОХРАНЕНИЯ ДАТЫ АВТОРИЗАЦИИ
-    # # Создание нового объекта данных пользователя
-    # user_data = UserData()
-    #
-    # # Фиксация времени последней успешной авторизации
-    # user_data.last_auth = datetime.now()  # Текущее время
-    #
-    # # Сохранение данных пользователя в хранилище
-    # # Ключ - ID пользователя Telegram (message.from_user.id)
-    # user_storage[message.from_user.id] = user_data  # сохраняем
-
-    # print(message.from_user.id)
-    await auth_bot.add_session(message.from_user.id, user_login)
-
-    # Отправка сообщения об успешной авторизации
-    await message.answer("Вы успешно авторизованы! Можете задавать вопросы!")
-
-    # Меняем состояние - авторизация подтверждена
-    await state.set_state(UserStates.auth_confirmed)
-
-
+# 8. Взаимодействие с LLM:
 async def ask_llm(message: Message, auth_bot: Database):
     # Инициализация таймеров
     timers = {
@@ -474,16 +453,17 @@ async def ask_llm(message: Message, auth_bot: Database):
                                   2)
 
     # Логируем временные метки
-    print("\n=== Профилирование времени выполнения ===")
-    print(f"1. Отправка thinking сообщения:"
-          f" {round((timers['thinking_msg'] - timers['total_start']).total_seconds(), 2)} сек.")
-    print(f"2. Запрос к LLM: {llm_request_time} сек. ({llm_request_time / total_time * 100:.1f}%)")
-    print(f"3. Обработка ответа: {response_processing_time} сек.")
-    print(f"4. Удаление thinking сообщения: {cleanup_time} сек.")
-    print(f"5. Формирование финального ответа: {final_response_time} сек.")
-    print(f"6. Отправка ответа пользователю: {sending_response_time} сек.")
-    print(f"7. Общее время выполнения: {total_time} сек.")
-    print("=====================================")
+    logger.debug(
+        "\n=== Профилирование времени выполнения (ask llm) ==="
+        f"1. Отправка thinking сообщения:"
+        f" {round((timers['thinking_msg'] - timers['total_start']).total_seconds(), 2)} сек."
+        f"2. Запрос к LLM: {llm_request_time} сек. ({llm_request_time / total_time * 100:.1f}%)"
+        f"3. Обработка ответа: {response_processing_time} сек."
+        f"4. Удаление thinking сообщения: {cleanup_time} сек."
+        f"5. Формирование финального ответа: {final_response_time} сек."
+        f"6. Отправка ответа пользователю: {sending_response_time} сек."
+        f"7. Общее время выполнения: {total_time} сек."
+        "=====================================")
 
     # Запись статистики
     timers['statistics_start'] = datetime.now()
@@ -493,62 +473,6 @@ async def ask_llm(message: Message, auth_bot: Database):
     timers['statistics_end'] = datetime.now()
 
     statistics_time = round((timers['statistics_end'] - timers['statistics_start']).total_seconds(), 2)
-    print(f"8. Запись статистики: {statistics_time} сек.")
+    logger.debug(f"8. Запись статистики: {statistics_time} сек.")
 
     await message.answer("Что вас ещё интересует?)")
-
-
-@router.message(AdminStates.admin)
-async def handle_admin_question(message: Message, auth_bot: Database):
-    await ask_llm(message, auth_bot)
-
-
-# 7. Обработчик для заблокированных пользователей (NEW!)
-@router.message(UserStates.banned)  # Или проверка состояния через БД
-async def handle_banned_user(message: Message):
-    await message.answer("❌ Ваш доступ заблокирован. Попробуйте снова авторизоваться через команду /start. Если "
-                         "не удалось - обратитесь к администратору")
-    return
-
-
-@router.message(UserStates.auth_confirmed)
-async def handle_user_question(message: Message, auth_bot: Database):
-    await ask_llm(message, auth_bot)
-
-
-# # 1. Стартовые команды (без состояний)
-# @router.message(CommandStart())
-# @router.message(Command("menu"))
-#
-# # 2. Общие callback-запросы (без состояний)
-# @router.callback_query(F.data == "about_us")
-# @router.callback_query(F.data == "about_bot")
-# @router.callback_query(F.data == "back_to_main")
-# @router.callback_query(F.data == "reauthorisation")
-# @router.callback_query(F.data == "help")
-#
-# # 3. Админские команды (без состояний, с проверкой прав)
-# @router.message(Command("admin"), F.from_user.id.in_(ADMIN_IDS))
-#
-# # 4. Админские callback-запросы (без состояний)
-# @router.callback_query(F.data == "admin_add_user"), F.from_user.id.in_(ADMIN_IDS))
-# @router.callback_query(F.data == "admin_remove_user"), F.from_user.id.in_(ADMIN_IDS))
-#
-# # 5. Обработчики состояний админа (в порядке важности)
-# @router.message(AdminState.waiting_for_new_user, F.from_user.id.in_(ADMIN_IDS))
-# @router.message(AdminState.waiting_for_user_to_remove, F.from_user.id.in_(ADMIN_IDS))
-#
-# # 6. Обработчики состояний пользователей (в порядке workflow)
-# @router.message(UserStates.login)
-# @router.message(UserStates.password)
-# @router.message(UserStates.auth_confirmed)
-#
-# # 7. Обработчик для заблокированных пользователей (NEW!)
-# @router.message(F.from_user.id.in_(BANNED_USERS))  # Или проверка состояния через БД
-# async def handle_banned_user(message: Message):
-#     await message.answer("❌ Ваш доступ заблокирован. Обратитесь к администратору.")
-#
-# # 8. Общий обработчик сообщений (должен быть последним!)
-# @router.message()
-# async def handle_other_messages(message: Message):
-#     await message.answer("Неизвестная команда")

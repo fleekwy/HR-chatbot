@@ -1,3 +1,4 @@
+import logging
 import smtplib
 from email.mime.text import MIMEText
 import os
@@ -5,6 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 mail_key = os.getenv("MAIL_KEY")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def send_key_to_email(user_mail: str, pass_key: str):
@@ -26,9 +30,9 @@ def send_key_to_email(user_mail: str, pass_key: str):
         with smtplib.SMTP_SSL("smtp.mail.ru", 465) as server:
             server.login(sender_email, password)
             server.sendmail(sender_email, receiver_email, message.as_string())
-        print("✅ Письмо успешно отправлено!")
+        logger.info("✅ Письмо успешно отправлено!")
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        logger.error(f"❌ Ошибка отправка письма: {e}")
 
 
 # if __name__ == "__main__":

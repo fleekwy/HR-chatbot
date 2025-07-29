@@ -19,30 +19,9 @@ import aiohttp
 from app.auth_valueai import AuthValuai
 
 # Настройка базовой конфигурации логирования для всего приложения:
-# - level=logging.INFO - устанавливает уровень логирования (INFO и выше)
-# - По умолчанию выводит сообщения в консоль с форматом: "LEVEL:logger_name:message"
-# - Другие доступные уровни: DEBUG, WARNING, ERROR, CRITICAL
 logging.basicConfig(level=logging.INFO)
-
 # Создание объекта логгера для текущего модуля:
-# - __name__ автоматически подставляет имя текущего модуля (например "app.auth_manager")
-# - Позволяет идентифицировать источник лог-сообщений
-# - Лучше использовать чем logging напрямую, так как:
-#   1. Позволяет индивидуально настраивать логгеры для разных модулей
-#   2. Поддерживает иерархию логгеров через точку в имени (например "app" и "app.auth")
 logger = logging.getLogger(__name__)
-
-
-# "Ты — HR-ассистент компании WaveAccess. Следуй следующим инструкциям при ответе: "
-#                                 "Если вопрос удалось распознать - выдавай найденную информацию по вопросу только на"
-#                               "рабочие вопросы (Контакты HR указывай только в формате:Name.Surname@waveaccess.global,"
-#                                 "Не упоминай другие контактные данные); на нерабочие вопросы отвечай: "
-#                                 "«Ваш вопрос не связан с работой в компании, я не могу на него ответить. "
-#                                 "Задайте рабочий вопрос.»; если вопрос подразумевает запрос конфиденциальной, "
-#                               "несвязанной с пользователем информации - (пароли или данные других сотрудников и т.д.)"
-#                               " - отвечай: «Я не буду отвечать на этот вопрос»; если ты не нашёл ответа на нормальный"
-#                                 "рабочий вопрос - отвечай: Я не владею данной информацией... Если не удалось "
-#                                 " вопрос, отвечай, то отвечай по-своему."
 
 
 class APIError(Exception):
@@ -87,7 +66,7 @@ class ValueAIClient:
 
         end = datetime.now()
         duration = round((end - start).total_seconds(), 3)
-        logger.info(f"[PROFILING] get_chat_response: {duration} сек. URL: {chat_url}")
+        logger.info(f"get_chat_response: {duration} сек. URL: {chat_url}")
 
         return result
 
@@ -162,31 +141,16 @@ class ValueAIClient:
                 get_response = (timers['get_response_end'] - timers['get_response_start']).total_seconds()
                 delete_chat = (timers['delete_chat_end'] - timers['delete_chat_start']).total_seconds()
 
-                print("\n=== Профилирование send_message_to_llm ===")
-                print(f"1. Создание чата: {create_chat:.2f} сек. ({create_chat/total*100:.1f}%)")
-                print(f"2. Получение ответа: {get_response:.2f} сек. ({get_response/total*100:.1f}%)")
-                print(f"3. Удаление чата: {delete_chat:.2f} сек. ({delete_chat/total*100:.1f}%)")
-                print(f"4. Общее время: {total:.2f} сек.")
-                print("==========================================\n")
+                logger.debug(
+                    "\n=== Профилирование send_message_to_llm ==="
+                    f"1. Создание чата: {create_chat:.2f} сек. ({create_chat/total*100:.1f}%)"
+                    f"2. Получение ответа: {get_response:.2f} сек. ({get_response/total*100:.1f}%)"
+                    f"3. Удаление чата: {delete_chat:.2f} сек. ({delete_chat/total*100:.1f}%)"
+                    f"4. Общее время: {total:.2f} сек."
+                    "==========================================\n")
 
                 return answer
 
         except Exception as e:
             logger.error(f"Ошибка при работе с API: {str(e)}")
             raise
-
-
-# Функция для тестироания
-# async def main():
-#     try:
-#         # Инициализация
-#         auth_manager = AuthManager(VALUEAI_LOGIN, VALUEAI_PASSWORD)
-#         client = ValueAIClient(auth_manager)
-#
-#         # Тестовый запрос
-#         question = "Какие у меня льготы как у сотрудника?"
-#         answer = await client.send_message_to_llm(question)
-#         print(f"Ответ на вопрос '{question}':\n{answer}")
-#
-#     except Exception as e:
-#         logger.error(f"Ошибка в основном потоке: {str(e)}")

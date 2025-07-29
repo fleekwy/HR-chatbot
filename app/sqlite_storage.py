@@ -1,6 +1,3 @@
-# Импортируем тип Dict из модуля typing для аннотации типов
-# (используется для указания, что user_storage будет словарем с целыми ключами и значениями UserData)
-# from typing import Dict
 import json
 import os
 import sqlite3
@@ -64,26 +61,6 @@ class SQLiteStorage(BaseStorage):
             ))
             conn.commit()
 
-    # async def delete_state(self, user_id: int) -> bool:
-    #     """Удаляет запись состояния пользователя из БД по user_id.
-    #     Возвращает True если запись была удалена, False если не найдена."""
-    #     try:
-    #         with sqlite3.connect(self.db_path) as conn:
-    #             cursor = conn.cursor()
-    #
-    #             # Удаляем запись
-    #             cursor.execute(
-    #                 "DELETE FROM fsm_states WHERE user_id = ?",
-    #                 (user_id,)
-    #             )
-    #
-    #             conn.commit()
-    #             return cursor.rowcount > 0  # True если были удалены строки
-    #
-    #     except sqlite3.Error as e:
-    #         print(f"Ошибка при удалении состояния: {e}")
-    #         return False
-
     async def get_state(self, key: StorageKey) -> str | None:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
@@ -130,18 +107,3 @@ class SQLiteStorage(BaseStorage):
 
     async def close(self):
         pass  # SQLite автоматически управляет соединениями
-
-# # Объявляем класс для хранения данных пользователя
-# class UserData:
-#     # Метод инициализации класса (конструктор)
-#     def __init__(self):
-#         # Создаем атрибут last_auth, изначально равный None
-#         # Будет хранить datetime объекта последней успешной авторизации пользователя
-#         self.last_auth = None  # Будем хранить время последней авторизации
-
-
-# Создаем словарь для временного хранения данных пользователей
-# Ключи - целые числа (user_id), значения - экземпляры класса UserData
-# Это упрощенная замена базе данных для примера
-# В реальном проекте лучше использовать Redis или БД
-# user_storage: Dict[int, UserData] = {}  # Пример временного хранилища (вместо базы данных)
