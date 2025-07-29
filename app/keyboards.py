@@ -23,7 +23,7 @@ main_kb = InlineKeyboardMarkup(
         )],
         [InlineKeyboardButton(
             text='Документация бота',
-            url='https://disk.yandex.ru/i/DcN71l1uadi3cA'
+            url='https://disk.yandex.ru/i/2jeRKxtSZYybug'
         )],
         [InlineKeyboardButton(
             text='Команды бота',
@@ -55,8 +55,8 @@ kb_comands = InlineKeyboardMarkup(
 
 def get_admin_kb():
     buttons = [
-        [InlineKeyboardButton(text="Add user", callback_data="admin_add_user")],
-        [InlineKeyboardButton(text="Remove user", callback_data="admin_remove_user")],
+        [InlineKeyboardButton(text="Добавить пользователя", callback_data="admin_add_user")],
+        [InlineKeyboardButton(text="Удалить пользователя", callback_data="admin_remove_user")],
         [InlineKeyboardButton(text='Закрыть', callback_data='close_admin_kb')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
