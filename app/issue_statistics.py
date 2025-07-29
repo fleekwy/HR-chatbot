@@ -1,6 +1,20 @@
 import asyncpg
-import time
-from datetime import timedelta
+import logging
+
+
+# Настройка базовой конфигурации логирования для всего приложения:
+# - level=logging.INFO - устанавливает уровень логирования (INFO и выше)
+# - По умолчанию выводит сообщения в консоль с форматом: "LEVEL:logger_name:message"
+# - Другие доступные уровни: DEBUG, WARNING, ERROR, CRITICAL
+logging.basicConfig(level=logging.INFO)
+
+# Создание объекта логгера для текущего модуля:
+# - __name__ автоматически подставляет имя текущего модуля (например "app.auth_manager")
+# - Позволяет идентифицировать источник лог-сообщений
+# - Лучше использовать чем logging напрямую, так как:
+#   1. Позволяет индивидуально настраивать логгеры для разных модулей
+#   2. Поддерживает иерархию логгеров через точку в имени (например "app" и "app.auth")
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -12,6 +26,11 @@ class Database:
         self.port = port
         self.pool = None
 
+    async def close(self):
+        if self.pool:
+            await self.pool.close()
+            logger.info("PostgreSQL connection pool closed")
+
     async def connect(self):
         self.pool = await asyncpg.create_pool(
             user=self.user,
@@ -20,10 +39,6 @@ class Database:
             host=self.host,
             port=self.port
         )
-
-    async def close(self):
-        if self.pool:
-            await self.pool.close()
 
     # поменять дельтатйм на флоат
     async def save_statistics(self, question: str, answer: str, answer_time: float):

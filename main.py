@@ -108,6 +108,7 @@ async def main():
         # except asyncio.CancelledError:
         #     pass
         await bot.session.close()  # освобождает ресурсы (HTTP-соединения)
+        await auth_bot.close()
         print("Бот отключён")
 
 
