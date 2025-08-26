@@ -33,8 +33,3 @@ def send_key_to_email(user_mail: str, pass_key: str):
         logger.info("✅ Письмо успешно отправлено!")
     except Exception as e:
         logger.error(f"❌ Ошибка отправка письма: {e}")
-
-
-# if __name__ == "__main__":
-#
-#     send_key_to_email("Daniil.Kondratyuk@waveaccess.global", "1234567890")
